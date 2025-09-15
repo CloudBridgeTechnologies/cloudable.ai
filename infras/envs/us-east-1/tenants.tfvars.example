@@ -1,0 +1,24 @@
+# AWS Region
+region = "us-east-1"
+
+# Environment name
+env = "dev"
+
+# Email addresses for budget alerts
+alert_emails = ["admin@yourdomain.com"]
+
+# Tenant configuration
+# Each tenant gets its own Bedrock agent and isolated data access
+tenants = {
+  t001 = { name = "acme" }
+  t002 = { name = "globex" }
+  # Add more tenants as needed
+  # t003 = { name = "initech" }
+}
+
+# Enable Bedrock agents (set to false to deploy without agents)
+enable_bedrock_agents = true
+
+# Optional: Customize other settings
+# aurora_engine_version = "15.10"
+# lambda_timeout = 15
