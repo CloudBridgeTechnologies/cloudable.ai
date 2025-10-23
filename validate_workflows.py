@@ -1,238 +1,299 @@
 #!/usr/bin/env python3
 """
-Workflow Validation Script for Cloudable.AI
-
-This script validates GitHub Actions workflows and ensures they are properly configured.
+Comprehensive GitHub Actions workflow validator script.
+This script checks for common errors in GitHub Actions workflow files.
 """
 
 import os
 import sys
 import yaml
 import re
+from pathlib import Path
+import argparse
+from typing import Dict, List, Any, Optional, Set
 
+# ANSI color codes for terminal output
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+RED = '\033[91m'
+BOLD = '\033[1m'
+ENDC = '\033[0m'
 
-def validate_workflow_file(file_path):
-    """Validate a single workflow file."""
-    try:
+class WorkflowValidator:
+    def __init__(self, workflows_dir: str = ".github/workflows"):
+        self.workflows_dir = Path(workflows_dir)
+        self.errors = []
+        self.warnings = []
+        self.info = []
+        self.all_job_ids = set()
+        self.all_workflow_ids = set()
+        self.active_workflows = set()
+    
+    def load_workflow(self, file_path: Path) -> Dict:
+        """Load a YAML workflow file."""
         with open(file_path, 'r') as f:
-            workflow = yaml.safe_load(f)
+            try:
+                return yaml.safe_load(f)
+            except yaml.YAMLError as e:
+                self.errors.append(f"Error parsing YAML in {file_path}: {e}")
+                return {}
+    
+    def find_workflow_files(self) -> List[Path]:
+        """Find all YAML workflow files in the workflows directory."""
+        if not self.workflows_dir.exists():
+            self.errors.append(f"Workflows directory {self.workflows_dir} does not exist")
+            return []
         
-        errors = []
-        warnings = []
-        
-        # Basic structure checks
-        if 'name' not in workflow:
-            errors.append(f"Missing workflow name in {file_path}")
-        
-        # Due to YAML parsing, 'on' might be interpreted as True instead of a dict
+        return list(self.workflows_dir.glob("*.yml")) + list(self.workflows_dir.glob("*.yaml"))
+    
+    def validate_trigger_configuration(self, workflow: Dict, file_path: Path) -> None:
+        """Check if workflow has proper trigger configuration."""
         if 'on' not in workflow:
-            errors.append(f"Missing trigger configuration in {file_path}")
+            self.errors.append(f"{file_path}: Missing 'on' trigger configuration")
+            return
         
+        # Empty trigger configuration
+        if workflow['on'] is None or workflow['on'] == {}:
+            self.errors.append(f"{file_path}: Empty trigger configuration")
+        
+        # Check if workflow_dispatch is properly configured for manual triggers
+        if isinstance(workflow['on'], dict) and 'workflow_dispatch' in workflow['on']:
+            if workflow['on']['workflow_dispatch'] is None:
+                workflow['on']['workflow_dispatch'] = {}  # Default empty object is valid
+            elif not isinstance(workflow['on']['workflow_dispatch'], dict):
+                self.errors.append(f"{file_path}: Invalid 'workflow_dispatch' configuration")
+    
+    def validate_permissions(self, workflow: Dict, file_path: Path) -> None:
+        """Check if workflow has proper permissions configuration."""
+        if 'permissions' not in workflow:
+            self.warnings.append(f"{file_path}: Missing 'permissions' configuration. Consider adding explicitly.")
+            return
+            
+        # Check for required permissions for AWS credentials
+        has_aws_action = self._has_aws_action(workflow)
+        if has_aws_action and ('permissions' not in workflow or 
+                              'id-token' not in workflow['permissions'] or 
+                              workflow['permissions']['id-token'] != 'write'):
+            self.errors.append(f"{file_path}: Uses AWS actions but missing 'id-token: write' permission required for OIDC")
+    
+    def _has_aws_action(self, workflow: Dict) -> bool:
+        """Check if workflow uses AWS actions that need OIDC auth."""
         if 'jobs' not in workflow:
-            errors.append(f"Missing jobs configuration in {file_path}")
-        elif not workflow['jobs']:
-            errors.append(f"No jobs defined in {file_path}")
-        
-        # Check for AWS credentials usage
-        if has_aws_credentials_step(workflow):
-            if not has_aws_permissions(workflow):
-                errors.append(f"Uses AWS credentials but missing id-token permissions in {file_path}")
-        
-        # Check for GitHub token usage
-        if has_github_token_usage(workflow):
-            if not has_contents_permissions(workflow):
-                warnings.append(f"Uses GitHub token but may not have proper permissions in {file_path}")
-        
-        # Check for proper Python version
-        if has_python_setup(workflow) and not has_valid_python_version(workflow):
-            warnings.append(f"Uses Python version 3.12 which might have compatibility issues in {file_path}")
-        
-        # Check for external action versions
-        if has_outdated_actions(workflow):
-            warnings.append(f"Uses potentially outdated actions in {file_path}")
-        
-        return {
-            "file": file_path,
-            "valid": len(errors) == 0,
-            "errors": errors,
-            "warnings": warnings
-        }
-        
-    except Exception as e:
-        return {
-            "file": file_path,
-            "valid": False,
-            "errors": [f"Failed to parse workflow file: {str(e)}"],
-            "warnings": []
-        }
-
-def has_aws_credentials_step(workflow):
-    """Check if workflow uses AWS credentials steps."""
-    for job_name, job in workflow.get('jobs', {}).items():
-        for step in job.get('steps', []):
-            if 'uses' in step and 'aws-actions/configure-aws-credentials' in step['uses']:
-                return True
-    return False
-
-def has_aws_permissions(workflow):
-    """Check if workflow has AWS permissions."""
-    permissions = workflow.get('permissions', {})
-    return isinstance(permissions, dict) and permissions.get('id-token') in ['write', True]
-
-def has_github_token_usage(workflow):
-    """Check if workflow uses GitHub token."""
-    for job_name, job in workflow.get('jobs', {}).items():
-        for step in job.get('steps', []):
-            if 'uses' in step and ('actions/github-script' in step['uses'] or 'EndBug/add-and-commit' in step['uses']):
-                return True
-            if 'env' in step and any('GITHUB_TOKEN' in env for env in step['env'].keys()):
-                return True
-    return False
-
-def has_contents_permissions(workflow):
-    """Check if workflow has contents permissions."""
-    permissions = workflow.get('permissions', {})
-    return isinstance(permissions, dict) and permissions.get('contents') in ['write', 'read', True]
-
-def has_python_setup(workflow):
-    """Check if workflow sets up Python."""
-    for job_name, job in workflow.get('jobs', {}).items():
-        for step in job.get('steps', []):
-            if 'uses' in step and 'actions/setup-python' in step['uses']:
-                return True
-    return False
-
-def has_valid_python_version(workflow):
-    """Check if workflow uses a valid Python version."""
-    env_python_version = workflow.get('env', {}).get('PYTHON_VERSION')
-    if env_python_version and env_python_version == '3.12':
+            return False
+            
+        for job_id, job in workflow['jobs'].items():
+            if 'steps' not in job:
+                continue
+                
+            for step in job['steps']:
+                if 'uses' in step and 'aws-actions/configure-aws-credentials' in step['uses']:
+                    return True
+                if 'with' in step and 'role-to-assume' in step['with']:
+                    return True
+                    
         return False
     
-    for job_name, job in workflow.get('jobs', {}).items():
-        for step in job.get('steps', []):
-            if 'uses' in step and 'actions/setup-python' in step['uses']:
-                if 'with' in step and 'python-version' in step['with']:
-                    if step['with']['python-version'] == '3.12':
-                        return False
-    return True
-
-def has_outdated_actions(workflow):
-    """Check if workflow uses potentially outdated actions."""
-    for job_name, job in workflow.get('jobs', {}).items():
-        for step in job.get('steps', []):
-            if 'uses' in step:
-                # Check if using non-versioned actions
-                if not re.search(r'@v\d+', step['uses']):
-                    return True
-                # Check for very old versions
-                match = re.search(r'@v(\d+)', step['uses'])
-                if match and int(match.group(1)) < 2:
-                    return True
-    return False
-
-def validate_all_workflows(workflows_dir='.github/workflows'):
-    """Validate all workflow files in the given directory."""
-    workflow_files = []
-    for file in os.listdir(workflows_dir):
-        if file.endswith('.yml') or file.endswith('.yaml'):
-            workflow_files.append(os.path.join(workflows_dir, file))
-    
-    results = []
-    for file in workflow_files:
-        results.append(validate_workflow_file(file))
-    
-    return results
-
-def print_validation_results(results):
-    """Print validation results in a readable format."""
-    print("=== GitHub Actions Workflow Validation ===\n")
-    
-    valid_count = len([r for r in results if r['valid']])
-    total_count = len(results)
-    
-    print(f"Validated {total_count} workflow files, {valid_count} valid, {total_count - valid_count} with errors\n")
-    
-    for result in results:
-        file_name = os.path.basename(result['file'])
-        status = "✅ VALID" if result['valid'] else "❌ INVALID"
-        print(f"{status} - {file_name}")
+    def validate_jobs(self, workflow: Dict, file_path: Path) -> None:
+        """Validate jobs configuration."""
+        if 'jobs' not in workflow or not workflow['jobs']:
+            self.errors.append(f"{file_path}: Missing or empty 'jobs' configuration")
+            return
+            
+        # Add all job IDs to the set for dependency checking
+        workflow_name = Path(file_path).stem
+        for job_id in workflow['jobs'].keys():
+            self.all_job_ids.add(f"{workflow_name}.{job_id}")
         
-        if result['errors']:
-            print("  Errors:")
-            for error in result['errors']:
-                print(f"  - {error}")
+        # Check each job
+        for job_id, job in workflow['jobs'].items():
+            # Check if job has runs-on
+            if 'runs-on' not in job:
+                self.errors.append(f"{file_path}, job '{job_id}': Missing 'runs-on' configuration")
+            
+            # Check job dependencies
+            if 'needs' in job:
+                needs = job['needs']
+                if isinstance(needs, str):
+                    if needs not in workflow['jobs']:
+                        self.errors.append(f"{file_path}, job '{job_id}': Depends on non-existent job '{needs}'")
+                elif isinstance(needs, list):
+                    for need in needs:
+                        if need not in workflow['jobs']:
+                            self.errors.append(f"{file_path}, job '{job_id}': Depends on non-existent job '{need}'")
+            
+            # Check steps
+            if 'steps' not in job or not job['steps']:
+                self.errors.append(f"{file_path}, job '{job_id}': Missing or empty 'steps' configuration")
+                continue
+                
+            self._validate_steps(job['steps'], file_path, job_id)
+    
+    def _validate_steps(self, steps: List[Dict], file_path: Path, job_id: str) -> None:
+        """Validate workflow steps."""
+        has_checkout = False
         
-        if result['warnings']:
-            print("  Warnings:")
-            for warning in result['warnings']:
-                print(f"  - {warning}")
+        for i, step in enumerate(steps):
+            # Check if step has a name
+            if 'name' not in step:
+                self.warnings.append(f"{file_path}, job '{job_id}', step #{i+1}: Missing 'name' property")
+            
+            # Check for checkout action
+            if 'uses' in step and 'actions/checkout@' in step['uses']:
+                has_checkout = True
+            
+            # Check for string interpolation in expressions
+            if 'run' in step:
+                self._check_expression_in_string(step['run'], file_path, job_id, i)
+                
+            if 'with' in step:
+                for key, value in step['with'].items():
+                    if isinstance(value, str):
+                        self._check_expression_in_string(value, file_path, job_id, i)
         
-        print("")
+        # Warn if no checkout action is used
+        if not has_checkout:
+            self.warnings.append(f"{file_path}, job '{job_id}': No checkout action found. Most workflows need to checkout the code.")
     
-    if valid_count == total_count:
-        print("All workflows are valid! 🎉")
-    else:
-        print(f"{total_count - valid_count} workflows have errors that need to be fixed.")
-
-def check_workflow_dependencies(workflows_dir='.github/workflows'):
-    """Check dependencies between workflows."""
-    workflow_mapping = {}
-    dependent_workflows = {}
+    def _check_expression_in_string(self, text: str, file_path: Path, job_id: str, step_index: int) -> None:
+        """Check for potential problems with expressions inside strings."""
+        if not isinstance(text, str):
+            return
+            
+        # Look for expressions with logical operators inside double quotes
+        matches = re.findall(r'"[^"]*\$\{\{[^}]*\|\|[^}]*\}\}[^"]*"', text)
+        if matches:
+            self.errors.append(
+                f"{file_path}, job '{job_id}', step #{step_index+1}: "
+                f"Expression with logical operator found inside double quotes: {matches[0]}"
+            )
+            
+        # Look for expressions with ternary operators inside double quotes
+        matches = re.findall(r'"[^"]*\$\{\{[^}]*\?[^}]*:[^}]*\}\}[^"]*"', text)
+        if matches:
+            self.errors.append(
+                f"{file_path}, job '{job_id}', step #{step_index+1}: "
+                f"Expression with ternary operator found inside double quotes: {matches[0]}"
+            )
     
-    # First pass: gather workflow names
-    for file in os.listdir(workflows_dir):
-        if file.endswith('.yml') or file.endswith('.yaml'):
-            try:
-                with open(os.path.join(workflows_dir, file), 'r') as f:
-                    workflow = yaml.safe_load(f)
-                    if 'name' in workflow:
-                        workflow_mapping[workflow['name']] = file
-            except Exception:
-                pass
+    def validate_workflow_dependencies(self) -> None:
+        """Validate dependencies between workflows."""
+        for workflow_file in self.find_workflow_files():
+            workflow = self.load_workflow(workflow_file)
+            if not workflow:
+                continue
+                
+            # Check workflow_run triggers
+            if 'on' in workflow and isinstance(workflow['on'], dict) and 'workflow_run' in workflow['on']:
+                workflow_run = workflow['on']['workflow_run']
+                if isinstance(workflow_run, dict) and 'workflows' in workflow_run:
+                    workflows = workflow_run['workflows']
+                    for wf in workflows:
+                        if wf not in self.all_workflow_ids:
+                            self.warnings.append(f"{workflow_file}: Depends on workflow '{wf}' that may not exist")
     
-    # Second pass: check for dependencies
-    for file in os.listdir(workflows_dir):
-        if file.endswith('.yml') or file.endswith('.yaml'):
-            try:
-                with open(os.path.join(workflows_dir, file), 'r') as f:
-                    workflow = yaml.safe_load(f)
-                    workflow_name = workflow.get('name', file)
-                    
-                    # Check workflow_run triggers
-                    workflow_run = workflow.get('on', {}).get('workflow_run', {})
-                    if workflow_run:
-                        workflows = workflow_run.get('workflows', [])
-                        if not isinstance(workflows, list):
-                            workflows = [workflows]
-                        
-                        for dependent in workflows:
-                            if dependent not in dependent_workflows:
-                                dependent_workflows[dependent] = []
-                            dependent_workflows[dependent].append(workflow_name)
-            except Exception:
-                pass
+    def check_python_version(self, workflow: Dict, file_path: Path) -> None:
+        """Check if Python version is consistent across jobs."""
+        python_versions = set()
+        
+        if 'jobs' not in workflow:
+            return
+            
+        for job_id, job in workflow['jobs'].items():
+            if 'steps' not in job:
+                continue
+                
+            for step in job['steps']:
+                if 'uses' in step and 'actions/setup-python@' in step['uses']:
+                    if 'with' in step and 'python-version' in step['with']:
+                        python_version = step['with']['python-version']
+                        python_versions.add(python_version)
+        
+        if len(python_versions) > 1:
+            self.warnings.append(f"{file_path}: Multiple Python versions used across jobs: {', '.join(python_versions)}")
     
-    print("\n=== Workflow Dependencies ===\n")
+    def validate_all_workflows(self) -> bool:
+        """Validate all workflows in the directory."""
+        workflow_files = self.find_workflow_files()
+        
+        if not workflow_files:
+            self.errors.append("No workflow files found")
+            return False
+        
+        # First pass: collect all workflow and job IDs
+        for file_path in workflow_files:
+            workflow_name = file_path.stem
+            self.all_workflow_ids.add(workflow_name)
+            
+            workflow = self.load_workflow(file_path)
+            if not workflow:
+                continue
+                
+            # Check if workflow is active
+            if 'on' in workflow and workflow['on']:
+                self.active_workflows.add(workflow_name)
+        
+        # Second pass: validate each workflow
+        for file_path in workflow_files:
+            workflow = self.load_workflow(file_path)
+            if not workflow:
+                continue
+                
+            self.validate_trigger_configuration(workflow, file_path)
+            self.validate_permissions(workflow, file_path)
+            self.validate_jobs(workflow, file_path)
+            self.check_python_version(workflow, file_path)
+        
+        # Third pass: validate inter-workflow dependencies
+        self.validate_workflow_dependencies()
+        
+        # Check if any workflows are inactive
+        inactive_workflows = self.all_workflow_ids - self.active_workflows
+        for wf in inactive_workflows:
+            self.warnings.append(f"Workflow '{wf}' appears to be inactive (no triggers configured)")
+        
+        return len(self.errors) == 0
     
-    for workflow_name, dependents in dependent_workflows.items():
-        if workflow_name in workflow_mapping:
-            print(f"Workflow '{workflow_name}' ({workflow_mapping[workflow_name]}):")
-            print(f"  Triggers workflows: {', '.join(dependents)}")
+    def print_results(self) -> None:
+        """Print validation results."""
+        if self.info:
+            print(f"{BOLD}Info:{ENDC}")
+            for item in self.info:
+                print(f"  {item}")
+            print()
+            
+        if self.warnings:
+            print(f"{YELLOW}{BOLD}Warnings:{ENDC}")
+            for warning in self.warnings:
+                print(f"  {YELLOW}⚠ {warning}{ENDC}")
+            print()
+            
+        if self.errors:
+            print(f"{RED}{BOLD}Errors:{ENDC}")
+            for error in self.errors:
+                print(f"  {RED}✖ {error}{ENDC}")
+            print()
+            
+        if not self.errors and not self.warnings:
+            print(f"{GREEN}{BOLD}All workflows are valid! No issues found.{ENDC}")
+        elif not self.errors:
+            print(f"{YELLOW}{BOLD}Workflows have warnings but no critical errors.{ENDC}")
         else:
-            print(f"❌ WARNING: Workflow '{workflow_name}' is referenced but not found!")
+            print(f"{RED}{BOLD}Workflows have errors that need to be fixed.{ENDC}")
+
+def main():
+    parser = argparse.ArgumentParser(description="Validate GitHub Actions workflow files")
+    parser.add_argument(
+        "--workflows-dir", 
+        default=".github/workflows", 
+        help="Directory containing workflow files (default: .github/workflows)"
+    )
+    args = parser.parse_args()
     
-    print("")
+    validator = WorkflowValidator(args.workflows_dir)
+    success = validator.validate_all_workflows()
+    validator.print_results()
+    
+    sys.exit(0 if success else 1)
 
 if __name__ == "__main__":
-    workflows_dir = '.github/workflows'
-    if not os.path.exists(workflows_dir):
-        print(f"Workflows directory '{workflows_dir}' not found!")
-        sys.exit(1)
-    
-    results = validate_all_workflows(workflows_dir)
-    print_validation_results(results)
-    check_workflow_dependencies(workflows_dir)
-    
-    # Exit with non-zero code if any workflow has errors
-    if any(not result['valid'] for result in results):
-        sys.exit(1)
+    main()
