@@ -1,0 +1,302 @@
+name: API Tests
+
+on:
+  workflow_run:
+    workflows: ["Terraform Deploy"]
+    types:
+      - completed
+  push:
+    branches:
+      - main
+    paths:
+      - 'infras/lambdas/**'
+      - 'tests/**'
+      - '.github/workflows/api-test.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - qa
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+  WORKING_DIR: infras/envs/us-east-1
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  prepare-test:
+    name: Prepare Test Environment
+    runs-on: ubuntu-latest
+    outputs:
+      api_endpoint: ${{ steps.get_api_details.outputs.api_endpoint }}
+      api_key: ${{ steps.get_api_details.outputs.api_key }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Get API Details
+        id: get_api_details
+        run: |
+          if [ -f "${{ env.WORKING_DIR }}/test/api_config.json" ]; then
+            API_ENDPOINT=$(jq -r '.apiEndpoint' "${{ env.WORKING_DIR }}/test/api_config.json")
+            API_KEY=$(jq -r '.apiKey' "${{ env.WORKING_DIR }}/test/api_config.json")
+          else
+            # Fallback to fetching from AWS if file doesn't exist
+            API_ID=$(aws apigateway get-rest-apis --query "items[?name=='secure-api-${{ github.event.inputs.environment || 'dev' }}'].id" --output text)
+            API_KEYS=$(aws apigateway get-api-keys --include-values --query "items[?name=='cloudable-api-key-${{ github.event.inputs.environment || 'dev' }}'].value" --output text)
+            
+            API_ENDPOINT="https://$API_ID.execute-api.${{ env.AWS_REGION }}.amazonaws.com/${{ github.event.inputs.environment || 'dev' }}"
+            API_KEY=$API_KEYS
+          fi
+          
+          echo "api_endpoint=$API_ENDPOINT" >> $GITHUB_OUTPUT
+          echo "api_key=$API_KEY" >> $GITHUB_OUTPUT
+          
+          # Create environment.json for tests
+          cat > "${{ env.WORKING_DIR }}/test/environment.json" << EOF
+          {
+            "API_GATEWAY_ID": "${API_ID}",
+            "API_GATEWAY_STAGE": "${{ github.event.inputs.environment || 'dev' }}",
+            "API_KEY": "${API_KEY}",
+            "REGION": "${{ env.AWS_REGION }}",
+            "TENANT_ID": "t001",
+            "CUSTOMER_ID": "test_user_$(date +%s)"
+          }
+          EOF
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install boto3 requests pytest pytest-html
+
+  test-kb-query:
+    name: Test KB Query API
+    needs: prepare-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pytest
+
+      - name: Run KB Query Test
+        env:
+          API_ENDPOINT: ${{ needs.prepare-test.outputs.api_endpoint }}
+          API_KEY: ${{ needs.prepare-test.outputs.api_key }}
+        run: |
+          cat > test_kb_query.py << 'EOF'
+          import requests
+          import json
+          import sys
+          import os
+          
+          API_ENDPOINT = os.environ["API_ENDPOINT"]
+          API_KEY = os.environ["API_KEY"]
+          
+          def test_kb_query():
+              url = f"{API_ENDPOINT}/kb/query"
+              headers = {
+                  "Content-Type": "application/json",
+                  "x-api-key": API_KEY
+              }
+              payload = {
+                  "tenant_id": "t001",
+                  "query": "What are the AI services offered by AWS?"
+              }
+              
+              response = requests.post(url, headers=headers, json=payload)
+              print(f"Status Code: {response.status_code}")
+              print(f"Response: {response.text}")
+              
+              assert response.status_code in [200, 201, 202], f"Expected success status code, got {response.status_code}"
+              
+              try:
+                  response_data = response.json()
+                  assert "results" in response_data, "Expected 'results' in response"
+              except Exception as e:
+                  print(f"Error parsing response: {e}")
+                  sys.exit(1)
+          
+          if __name__ == "__main__":
+              test_kb_query()
+          EOF
+          
+          python test_kb_query.py
+
+  test-chat:
+    name: Test Chat API
+    needs: prepare-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pytest
+
+      - name: Run Chat API Test
+        env:
+          API_ENDPOINT: ${{ needs.prepare-test.outputs.api_endpoint }}
+          API_KEY: ${{ needs.prepare-test.outputs.api_key }}
+        run: |
+          cat > test_chat.py << 'EOF'
+          import requests
+          import json
+          import sys
+          import os
+          import uuid
+          
+          API_ENDPOINT = os.environ["API_ENDPOINT"]
+          API_KEY = os.environ["API_KEY"]
+          
+          def test_chat():
+              url = f"{API_ENDPOINT}/chat"
+              headers = {
+                  "Content-Type": "application/json",
+                  "x-api-key": API_KEY
+              }
+              session_id = str(uuid.uuid4())
+              payload = {
+                  "tenant_id": "t001",
+                  "customer_id": "test_user",
+                  "message": "What is my journey status?",
+                  "session_id": session_id
+              }
+              
+              response = requests.post(url, headers=headers, json=payload)
+              print(f"Status Code: {response.status_code}")
+              print(f"Response: {response.text}")
+              
+              assert response.status_code in [200, 201, 202], f"Expected success status code, got {response.status_code}"
+              
+              try:
+                  response_data = response.json()
+                  assert "answer" in response_data, "Expected 'answer' in response"
+                  if "trace_id" in response_data:
+                      print(f"Trace ID: {response_data['trace_id']}")
+              except Exception as e:
+                  print(f"Error parsing response: {e}")
+                  sys.exit(1)
+          
+          if __name__ == "__main__":
+              test_chat()
+          EOF
+          
+          python test_chat.py
+
+  generate-test-report:
+    name: Generate Test Report
+    needs: [test-kb-query, test-chat]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Create Test Summary
+        run: |
+          echo "# API Test Results" > test_summary.md
+          echo "" >> test_summary.md
+          echo "## Test Runs" >> test_summary.md
+          echo "" >> test_summary.md
+          echo "| Test | Status |" >> test_summary.md
+          echo "|------|--------|" >> test_summary.md
+          
+          KB_STATUS="${{ needs.test-kb-query.result }}"
+          CHAT_STATUS="${{ needs.test-chat.result }}"
+          
+          if [ "$KB_STATUS" == "success" ]; then
+            echo "| KB Query API | ✅ Passed |" >> test_summary.md
+          else
+            echo "| KB Query API | ❌ Failed |" >> test_summary.md
+          fi
+          
+          if [ "$CHAT_STATUS" == "success" ]; then
+            echo "| Chat API | ✅ Passed |" >> test_summary.md
+          else
+            echo "| Chat API | ❌ Failed |" >> test_summary.md
+          fi
+          
+          echo "" >> test_summary.md
+          echo "Test run completed at $(date)" >> test_summary.md
+      
+      - name: Upload Test Summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-summary
+          path: test_summary.md
+          retention-days: 5
+
+  validate-agent-core:
+    name: Validate Agent Core
+    needs: prepare-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install boto3 requests
+
+      - name: Run Agent Core Validation
+        run: |
+          cd ${{ env.WORKING_DIR }}
+          python validate_agent_core.py --tenant-id t001 --env ${{ github.event.inputs.environment || 'dev' }}
+          
+          # Store validation result
+          if [ $? -eq 0 ]; then
+            echo "AGENT_CORE_VALIDATION=SUCCESS" >> $GITHUB_ENV
+          else
+            echo "AGENT_CORE_VALIDATION=FAILURE" >> $GITHUB_ENV
+          fi
+
+      - name: Report Validation Result
+        if: env.AGENT_CORE_VALIDATION == 'FAILURE'
+        run: |
+          echo "::error::Agent Core validation failed. Check logs for details."
+          exit 1
