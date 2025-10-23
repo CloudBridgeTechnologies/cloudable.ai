@@ -93,6 +93,14 @@ tmp/
 .cache/
 .cleanup_tmp/
 
+# Backup files
+*.bak
+*.backup
+
+# Test files not in tests directory
+test_*.py
+!tests/test_*.py
+
 # Archive files
 *.tar.gz
 *.rar
