@@ -1,5 +1,5 @@
 resource "aws_budgets_budget" "monthly" {
-  name         = "cloudable-${var.env}-${var.region}-spend"
+  name         = "cloudable-budget-${var.env}-${var.region}"
   budget_type  = "COST"
   limit_amount = "500"
   limit_unit   = "USD"
@@ -12,9 +12,9 @@ resource "aws_budgets_budget" "monthly" {
 
   notification {
     comparison_operator        = "GREATER_THAN"
-    threshold                  = 80
+    threshold                  = 90
     threshold_type             = "PERCENTAGE"
-    notification_type          = "FORECASTED"
+    notification_type          = "ACTUAL"
     subscriber_email_addresses = var.alert_emails
   }
 

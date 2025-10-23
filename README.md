@@ -1,4 +1,4 @@
-# Colourable.AI - Multi-Tenant AWS Bedrock Agent Platform
+# Cloudable.AI - Multi-Tenant AWS Bedrock Agent Platform
 
 [![Infrastructure](https://img.shields.io/badge/Infrastructure-Terraform-blue.svg)](https://terraform.io)
 [![AWS](https://img.shields.io/badge/Cloud-AWS-orange.svg)](https://aws.amazon.com)
@@ -23,12 +23,12 @@ A production-ready, multi-tenant AI agent platform built on AWS Bedrock, designe
 │   API Gateway   │────│  Orchestrator    │────│   Bedrock       │
 │   (REST API)    │    │   Lambda         │    │   Agents        │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │                        │
-                                │                        │
-                       ┌──────────────────┐    ┌─────────────────┐
-                       │   DB Actions     │    │   Aurora        │
-                       │   Lambda         │────│   PostgreSQL    │
-                       └──────────────────┘    └─────────────────┘
+                              │                        │
+                              │                        │
+                     ┌──────────────────┐    ┌─────────────────┐
+                     │   DB Actions     │    │   Aurora        │
+                     │   Lambda         │────│   PostgreSQL    │
+                     └──────────────────┘    └─────────────────┘
 ```
 
 ### Components
@@ -50,8 +50,8 @@ A production-ready, multi-tenant AI agent platform built on AWS Bedrock, designe
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/CloudBridgeTechnologies/colourable.ai.git
-cd colourable.ai
+git clone https://github.com/CloudBridgeTechnologies/cloudable.ai.git
+cd cloudable.ai
 ```
 
 ### 2. Configure Environment
@@ -273,9 +273,26 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 For support and questions:
 
-- **Issues**: [GitHub Issues](https://github.com/CloudBridgeTechnologies/colourable.ai/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/CloudBridgeTechnologies/colourable.ai/discussions)
-- **Email**: support@cloudbridge.tech
+- **Issues**: [GitHub Issues](https://github.com/CloudBridgeTechnologies/cloudable.ai/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/CloudBridgeTechnologies/cloudable.ai/discussions)
+- **Email**: support@cloudbridge.co.uk
+
+## 📚 Documentation
+
+### API Documentation
+- [API Security Guide](docs/api/API_SECURITY.md) - Detailed guide on API key authentication and security
+- [API Testing Guide](docs/api/API_TESTING_GUIDE.md) - Guide for testing API endpoints with Postman
+- [API Security Test Results](docs/api/API_SECURITY_TEST_RESULTS.md) - Results of API security testing
+
+### Knowledge Base Documentation
+- [KB Setup Guide](docs/knowledge-base/KB_SETUP_GUIDE.md) - Guide for setting up the knowledge base
+- [KB Implementation Summary](docs/knowledge-base/KB_IMPLEMENTATION_SUMMARY.md) - Summary of knowledge base implementation
+- [AWS API Knowledge Base Testing](AWS_API_KNOWLEDGE_BASE_TESTING.md) - Guide for testing knowledge base using AWS APIs
+
+### Other Documentation
+- [Security Documentation](docs/SECURITY.md) - Comprehensive security documentation
+- [Integration Fix Report](docs/integration/INTEGRATION_FIX_REPORT.md) - Report on fixing integration issues
+- [Cleanup Recommendations](docs/maintenance/CLEANUP_RECOMMENDATIONS.md) - Recommendations for cleaning up the codebase
 
 ## 🙏 Acknowledgments
 

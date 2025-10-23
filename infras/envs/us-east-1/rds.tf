@@ -4,7 +4,7 @@ resource "random_password" "db" {
 }
 
 resource "aws_secretsmanager_secret" "db" {
-  name       = "aurora-${var.env}-admin"
+  name       = "aurora-${var.env}-admin-new"
   kms_key_id = aws_kms_key.rds.id
   tags       = local.tags
 }
@@ -47,21 +47,23 @@ resource "aws_security_group" "aurora" {
 }
 
 resource "aws_rds_cluster" "this" {
-  cluster_identifier      = "aurora-${var.env}"
-  engine                  = "aurora-postgresql"
-  engine_version          = var.aurora_engine_version
-  master_username         = jsondecode(aws_secretsmanager_secret_version.db.secret_string)["username"]
-  master_password         = jsondecode(aws_secretsmanager_secret_version.db.secret_string)["password"]
-  database_name           = "cloudable"
-  db_subnet_group_name    = aws_db_subnet_group.aurora.name
-  vpc_security_group_ids  = [aws_security_group.aurora.id]
-  storage_encrypted       = true
-  kms_key_id              = aws_kms_key.rds.arn
-  backup_retention_period = 7
-  preferred_backup_window = "03:00-04:00"
-  deletion_protection     = false
-  enable_http_endpoint    = true
-  tags                    = local.tags
+  cluster_identifier        = "aurora-${var.env}"
+  engine                    = "aurora-postgresql"
+  engine_version            = var.aurora_engine_version
+  master_username           = jsondecode(aws_secretsmanager_secret_version.db.secret_string)["username"]
+  master_password           = jsondecode(aws_secretsmanager_secret_version.db.secret_string)["password"]
+  database_name             = "cloudable"
+  db_subnet_group_name      = aws_db_subnet_group.aurora.name
+  vpc_security_group_ids    = [aws_security_group.aurora.id]
+  storage_encrypted         = true
+  kms_key_id                = aws_kms_key.rds.arn
+  backup_retention_period   = 7
+  preferred_backup_window   = "03:00-04:00"
+  deletion_protection       = false
+  enable_http_endpoint      = true
+  skip_final_snapshot       = true
+  final_snapshot_identifier = "aurora-${var.env}-final-snapshot"
+  tags                      = local.tags
 
   serverlessv2_scaling_configuration {
     min_capacity = 0.5

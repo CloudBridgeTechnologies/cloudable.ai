@@ -3,17 +3,28 @@
 *.tfstate.*
 *.tfvars.backup
 *.tfplan
+*.tfplan*
+*.out
 .terraform/
 .terraform.lock.hcl
 terraform.tfstate.d/
 *.tfvars
 !*.tfvars.example
+crash.log
+crash.*.log
 
 # AWS credentials and sensitive files
 .aws/
 *.pem
 *.key
 *.crt
+
+# Build artifacts
+*.zip
+*_update.zip
+*_fixed.zip
+
+# Local environment
 .env
 .env.local
 .env.*.local
@@ -78,10 +89,11 @@ yarn-error.log*
 *.tmp
 *.temp
 /tmp/
+tmp/
 .cache/
+.cleanup_tmp/
 
 # Archive files
-*.zip
 *.tar.gz
 *.rar
 
@@ -94,3 +106,6 @@ coverage/
 
 # Local configuration
 config.local.*
+
+# Lambda packages
+infras/lambdas/*/package/

@@ -55,7 +55,7 @@ resource "aws_lambda_function" "orchestrator" {
   source_code_hash = data.archive_file.orchestrator_zip.output_base64sha256
   handler       = "main.handler"
   runtime       = "python3.12"
-  timeout       = 20
+  timeout       = 900  # Increased to 15 minutes
   environment {
     variables = {
       REGION = var.region

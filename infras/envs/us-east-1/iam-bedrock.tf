@@ -1,5 +1,3 @@
-data "aws_caller_identity" "current" {}
-
 data "aws_iam_policy_document" "assume_bedrock" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -33,10 +31,34 @@ resource "aws_iam_role_policy" "agent" {
     Statement = [
       { 
         Effect = "Allow", 
-        Action = "bedrock:*", 
+        Action = [
+          "bedrock:*",
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream"
+        ], 
         Resource = "*" 
       },
-      { Effect = "Allow", Action = ["lambda:InvokeFunction"], Resource = aws_lambda_function.db_actions.arn }
+      { 
+        Effect = "Allow",
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream"
+        ],
+        Resource = "arn:aws:bedrock:*::foundation-model/anthropic.claude-*"
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "bedrock:GetFoundationModelAvailability",
+          "bedrock:ListFoundationModels"
+        ],
+        Resource = "*"
+      },
+      { 
+        Effect = "Allow", 
+        Action = ["lambda:InvokeFunction"], 
+        Resource = aws_lambda_function.db_actions.arn 
+      }
     ]
   })
 }
