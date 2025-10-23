@@ -69,7 +69,6 @@ jobs:
 
   terraform-plan:
     name: Terraform Plan
-    needs: terraform-validate
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     steps:

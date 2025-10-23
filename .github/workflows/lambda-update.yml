@@ -22,9 +22,15 @@ on:
         required: false
         type: string
 
+
+permissions:
+  id-token: write  # Required for AWS credentials
+  contents: read   # Required for checkout
+  pull-requests: write  # Required for PR comments
+
 env:
   AWS_REGION: us-east-1
-  PYTHON_VERSION: '3.12'
+  PYTHON_VERSION: '3.9'
 
 jobs:
   update-lambda-functions:
