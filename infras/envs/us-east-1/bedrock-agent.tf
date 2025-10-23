@@ -1,37 +1,76 @@
 resource "aws_bedrockagent_agent" "tenant" {
   for_each                = var.enable_bedrock_agents ? var.tenants : {}
   agent_name              = "agent-${var.env}-${each.value.name}"
-  instruction             = "You are the ${each.value.name} assistant. Allowed intents: journey.status, assessment.summary. For journey.status, call the rds_read action group POST /journey_status with JSON {tenant_id, customer_id}. For assessment.summary, call POST /assessments_summary with JSON {tenant_id, customer_id}. Do not answer from your own knowledge; always call the action to retrieve data, then return the action result. Refuse all other intents."
+  instruction             = <<EOF
+You are an intelligent AI assistant for ${each.value.name} with advanced reasoning capabilities. You can:
+
+1. **Personal Data Operations**: Access customer journey status and assessment summaries
+2. **Knowledge Base Queries**: Search company policies, procedures, and documentation
+3. **Intelligent Routing**: Determine the best approach based on query context
+4. **Multi-step Reasoning**: Break down complex requests into actionable steps
+5. **Context Awareness**: Maintain conversation context and provide personalized responses
+
+**Core Capabilities:**
+- Journey Status: Retrieve and analyze customer progress through onboarding/engagement stages
+- Assessment Analysis: Access and summarize customer assessment results
+- Knowledge Search: Query company knowledge base for policies and procedures
+- Intelligent Decision Making: Choose appropriate actions based on query intent
+
+**Reasoning Process:**
+1. Analyze the user's intent and context
+2. Determine if the query requires personal data, company knowledge, or both
+3. Route to appropriate action groups or knowledge base
+4. Synthesize information from multiple sources when needed
+5. Provide comprehensive, contextual responses
+
+**Allowed Operations:**
+- journey.status: Get customer journey progress
+- assessment.summary: Retrieve assessment results
+- knowledge.search: Query company knowledge base
+- multi.step.analysis: Combine personal data with company knowledge
+
+Always call the appropriate action group or knowledge base rather than using your own knowledge. Provide detailed, actionable responses based on the retrieved data.
+EOF
   foundation_model        = "anthropic.claude-3-sonnet-20240229-v1:0"
   agent_resource_role_arn = aws_iam_role.agent.arn
+
+  # Enhanced inference configuration for better reasoning
+  inference_configuration {
+    temperature = 0.3  # Lower for more consistent reasoning
+    top_p       = 0.9
+    top_k       = 50
+    max_length  = 4096
+  }
 
   # guardrail_configuration {
   #   guardrail_identifier = aws_bedrock_guardrail.tenant[each.key].guardrail_id
   #   guardrail_version    = "DRAFT"
   # }
 
-  idle_session_ttl_in_seconds = 600
+  idle_session_ttl_in_seconds = 1800  # Increased for longer conversations
   tags                        = merge(local.tags, { tenant_id = each.key })
 }
 
 resource "aws_bedrockagent_agent_action_group" "tenant_db" {
   for_each          = var.enable_bedrock_agents ? var.tenants : {}
-  action_group_name = "rds_read"
+  action_group_name = "customer_data_operations"
   agent_id          = aws_bedrockagent_agent.tenant[each.key].id
   agent_version     = "DRAFT"
+  description       = "Customer data operations for journey tracking and assessment analysis"
 
-    action_group_executor { lambda = aws_lambda_function.db_actions.arn }
+  action_group_executor { lambda = aws_lambda_function.db_actions.arn }
   api_schema {
     payload = <<EOF
 openapi: "3.0.0"
 info:
-  title: "DB Read"
-  version: "1.0.0"
+  title: "Customer Data Operations"
+  version: "2.0.0"
+  description: "Advanced customer data operations with intelligent analysis capabilities"
 paths:
   /journey_status:
     post:
-      description: "Invoke journey status lookup via Lambda with tenant_id and customer_id. Use for journey status requests."
-      operationId: journey_status
+      description: "Retrieve comprehensive journey status with progress analysis and next steps"
+      operationId: get_journey_status
       requestBody:
         required: true
         content:
@@ -46,9 +85,13 @@ paths:
                 customer_id:
                   type: string
                   description: "Customer identifier"
+                include_analysis:
+                  type: boolean
+                  description: "Include AI-powered analysis of journey progress"
+                  default: true
       responses:
         "200":
-          description: OK
+          description: "Journey status with analysis"
           content:
             application/json:
               schema:
@@ -56,11 +99,22 @@ paths:
                 properties:
                   result:
                     type: string
-                    description: "Formatted journey status summary"
+                    description: "Formatted journey status with analysis"
+                  stage:
+                    type: string
+                    description: "Current journey stage"
+                  progress:
+                    type: number
+                    description: "Progress percentage"
+                  next_steps:
+                    type: array
+                    items:
+                      type: string
+                    description: "Recommended next steps"
   /assessments_summary:
     post:
-      description: "Invoke assessments summary lookup via Lambda with tenant_id and customer_id. Use for assessment summary requests."
-      operationId: assessments_summary
+      description: "Retrieve assessment summary with trend analysis and insights"
+      operationId: get_assessments_summary
       requestBody:
         required: true
         content:
@@ -75,9 +129,13 @@ paths:
                 customer_id:
                   type: string
                   description: "Customer identifier"
+                include_trends:
+                  type: boolean
+                  description: "Include trend analysis across assessments"
+                  default: true
       responses:
         "200":
-          description: OK
+          description: "Assessment summary with insights"
           content:
             application/json:
               schema:
@@ -85,7 +143,63 @@ paths:
                 properties:
                   result:
                     type: string
-                    description: "Formatted assessments summary"
+                    description: "Formatted assessment summary"
+                  latest_score:
+                    type: number
+                    description: "Latest assessment score"
+                  trend:
+                    type: string
+                    description: "Performance trend (improving/stable/declining)"
+                  insights:
+                    type: array
+                    items:
+                      type: string
+                    description: "AI-generated insights"
+  /customer_insights:
+    post:
+      description: "Generate comprehensive customer insights combining journey and assessment data"
+      operationId: get_customer_insights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, customer_id]
+              properties:
+                tenant_id:
+                  type: string
+                  description: "Tenant identifier"
+                customer_id:
+                  type: string
+                  description: "Customer identifier"
+                insight_type:
+                  type: string
+                  enum: ["comprehensive", "journey_focus", "assessment_focus"]
+                  description: "Type of insights to generate"
+                  default: "comprehensive"
+      responses:
+        "200":
+          description: "Comprehensive customer insights"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: string
+                    description: "Formatted customer insights"
+                  journey_summary:
+                    type: string
+                    description: "Journey progress summary"
+                  assessment_summary:
+                    type: string
+                    description: "Assessment performance summary"
+                  recommendations:
+                    type: array
+                    items:
+                      type: string
+                    description: "Personalized recommendations"
 EOF
   }
   skip_resource_in_use_check = true
