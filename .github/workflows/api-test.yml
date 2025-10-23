@@ -65,10 +65,11 @@ jobs:
             API_KEY=$(jq -r '.apiKey' "${{ env.WORKING_DIR }}/test/api_config.json")
           else
             # Fallback to fetching from AWS if file doesn't exist
-            API_ID=$(aws apigateway get-rest-apis --query "items[?name=='secure-api-${{ github.event.inputs.environment || 'dev' }}'].id" --output text)
-            API_KEYS=$(aws apigateway get-api-keys --include-values --query "items[?name=='cloudable-api-key-${{ github.event.inputs.environment || 'dev' }}'].value" --output text)
+            ENV_NAME="${{ github.event.inputs.environment || 'dev' }}"
+            API_ID=$(aws apigateway get-rest-apis --query "items[?name=='secure-api-$ENV_NAME'].id" --output text)
+            API_KEYS=$(aws apigateway get-api-keys --include-values --query "items[?name=='cloudable-api-key-$ENV_NAME'].value" --output text)
             
-            API_ENDPOINT="https://$API_ID.execute-api.${{ env.AWS_REGION }}.amazonaws.com/${{ github.event.inputs.environment || 'dev' }}"
+            API_ENDPOINT="https://$API_ID.execute-api.${{ env.AWS_REGION }}.amazonaws.com/$ENV_NAME"
             API_KEY=$API_KEYS
           fi
           

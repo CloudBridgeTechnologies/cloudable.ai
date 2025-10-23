@@ -240,9 +240,12 @@ jobs:
           EOF
         working-directory: ${{ env.WORKING_DIR }}/test
 
+      - name: Set Environment Name
+        run: echo "ENV_NAME=${{ github.event.inputs.environment || 'dev' }}" >> $GITHUB_ENV
+        
       - name: Commit API Config
         uses: EndBug/add-and-commit@v9
         with:
           add: '${{ env.WORKING_DIR }}/test/api_config.json'
-          message: 'Update API configuration for ${{ github.event.inputs.environment || "dev" }} environment'
+          message: 'Update API configuration for ${{ env.ENV_NAME }} environment'
           default_author: github_actions
