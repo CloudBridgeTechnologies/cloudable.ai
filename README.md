@@ -1,51 +1,79 @@
-# Cloudable.AI - Multi-Tenant AWS Bedrock Agent Platform
+# Cloudable.AI - Responsible AI Multi-Tenant Platform
 
 [![Infrastructure](https://img.shields.io/badge/Infrastructure-Terraform-blue.svg)](https://terraform.io)
 [![AWS](https://img.shields.io/badge/Cloud-AWS-orange.svg)](https://aws.amazon.com)
 [![Bedrock](https://img.shields.io/badge/AI-AWS%20Bedrock-purple.svg)](https://aws.amazon.com/bedrock)
+[![Security](https://img.shields.io/badge/Security-Responsible%20AI-red.svg)](#-responsible-ai--security-features)
+[![Monitoring](https://img.shields.io/badge/Monitoring-CloudWatch-yellow.svg)](#-monitoring--analytics)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Agent](https://img.shields.io/badge/Agent-Bedrock%20Agent%20Core-blueviolet)](https://aws.amazon.com/bedrock/agent-core)
+[![Telemetry](https://img.shields.io/badge/Telemetry-Langfuse-lightgrey)](https://langfuse.com)
 
-A production-ready, multi-tenant AI agent platform built on AWS Bedrock, designed to provide personalized customer insights through journey tracking and assessment summaries.
+A production-ready, multi-tenant AI agent platform built on AWS Bedrock with enterprise-grade responsible AI security controls. Designed to provide personalized customer insights through journey tracking and assessment summaries while ensuring safety, privacy, and compliance.
+
+> **🆕 Latest Update**: Enhanced with AWS Bedrock Agent Core and Langfuse telemetry for advanced observability, tracing, and performance monitoring. Now with CI/CD via GitHub Actions workflows.
 
 ## 🚀 Features
 
+### 🛡️ **Responsible AI & Security**
+- **API Key Authentication**: Secure API access with API keys and usage plans
+- **Advanced Content Filtering**: HIGH-strength guardrails for hate, violence, sexual content, and misconduct
+- **Prompt Injection Protection**: Real-time detection and blocking of malicious prompts
+- **PII Data Protection**: Automatic blocking/anonymization of emails, phones, SSN, credit cards
+- **Input Validation**: Comprehensive sanitization and format validation
+- **Rate Limiting**: API throttling (10 RPS) with burst capacity protection (20 requests)
+
+### 🏗️ **Platform Architecture**
 - **Multi-Tenant Architecture**: Isolated data and AI agents per tenant
-- **AWS Bedrock Integration**: Claude Sonnet 4 powered conversational AI
+- **AWS Bedrock Integration**: Claude Sonnet powered conversational AI with inference profiles
 - **Real-time Data Access**: Direct database integration with Aurora PostgreSQL
-- **RESTful API**: Clean HTTP endpoints for easy integration
+- **RESTful API**: Clean HTTP endpoints with security controls
 - **Infrastructure as Code**: Complete Terraform deployment
-- **Production Ready**: VPC isolation, encryption, monitoring, and logging
+- **CI/CD Pipeline**: GitHub Actions workflows for deployment and testing
+
+### 📊 **Monitoring & Observability**
+- **AI Safety Dashboard**: Real-time monitoring of security events and threats
+- **CloudWatch Alerting**: Automated notifications for security violations
+- **Audit Trails**: Complete logging of all AI interactions and security events
+- **Usage Analytics**: Model invocation tracking and anomaly detection
+- **Langfuse Telemetry**: Advanced LLM observability with session-based tracing and quality scoring
+- **Production Ready**: VPC isolation, encryption, comprehensive monitoring
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   API Gateway   │────│  Orchestrator    │────│   Bedrock       │
-│   (REST API)    │    │   Lambda         │    │   Agents        │
+│  + Rate Limiting│    │  + Agent Core    │    │  + Guardrails   │
+│  + Throttling   │    │  + Telemetry     │    │  + Content Filt.│
 └─────────────────┘    └──────────────────┘    └─────────────────┘
-                              │                        │
-                              │                        │
-                     ┌──────────────────┐    ┌─────────────────┐
-                     │   DB Actions     │    │   Aurora        │
-                     │   Lambda         │────│   PostgreSQL    │
-                     └──────────────────┘    └─────────────────┘
+         │                       │                        │
+         │                       │                        │
+         ▼                       ▼                        ▼
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  CloudWatch     │    │   DB Actions     │    │   Aurora        │
+│  + Monitoring   │    │   Lambda         │────│   PostgreSQL    │
+│  + Alerting     │    │  + SQL Security  │    │  + Encryption   │
+│  + Dashboard    │    └──────────────────┘    └─────────────────┘
+└─────────────────┘
 ```
 
-### Components
+### Agent Core Components
 
-- **Orchestrator Lambda**: Handles API requests and manages Bedrock agent interactions
-- **DB Actions Lambda**: Executes secure database queries with multi-tenant isolation
-- **Bedrock Agents**: Tenant-specific AI agents with custom action groups
-- **Aurora Database**: Serverless PostgreSQL with Data API for scalable data access
-- **VPC**: Network isolation and security
+- **Orchestrator Lambda**: Enhanced with Agent Core for intelligent routing and reasoning
+- **Langfuse Integration**: Advanced telemetry and tracing for response quality scoring
+- **Bedrock Agents**: Tenant-specific AI agents with optimized inference parameters
+- **Knowledge Base Integration**: Seamless connection to Bedrock Knowledge Bases
+- **Action Groups**: Advanced API schemas for flexible function calling
 
-## 🛠️ Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
 - AWS CLI configured with appropriate permissions
-- Terraform >= 1.7.0
-- Python 3.12+ (for Lambda functions)
+- Terraform >= 1.5.0
+- Python 3.9+ (for Lambda functions)
+- GitHub account with appropriate secrets configured (for CI/CD)
 
 ### 1. Clone the Repository
 
@@ -78,20 +106,14 @@ tenants = {
 enable_bedrock_agents = true
 ```
 
-### 3. Deploy Infrastructure
+### 3. Deploy Using GitHub Actions
 
-#### Step 1: Deploy State Backend
+Follow the instructions in [WORKFLOW_EXECUTION_INSTRUCTIONS.md](WORKFLOW_EXECUTION_INSTRUCTIONS.md) to deploy using GitHub Actions workflows.
 
-```bash
-cd infras/envs/state-bootstrap
-terraform init
-terraform apply
-```
-
-#### Step 2: Deploy Main Infrastructure
+For local deployment:
 
 ```bash
-cd ../us-east-1
+cd infras/envs/us-east-1
 terraform init
 terraform apply -var-file=tenants.tfvars
 ```
@@ -101,23 +123,43 @@ terraform apply -var-file=tenants.tfvars
 After deployment completes, test the API:
 
 ```bash
-# Get the API endpoint
-API_ENDPOINT=$(terraform output -raw api_endpoint)
+# Get the API endpoint and secure API key
+API_ENDPOINT=$(terraform output -raw secure_api_endpoint)
+API_KEY=$(terraform output -raw secure_api_key)
 
 # Test journey status
 curl -X POST "$API_ENDPOINT/chat" \
   -H "Content-Type: application/json" \
+  -H "x-api-key: $API_KEY" \
   -d '{
     "message": "What is my journey status?",
     "tenant_id": "t001",
     "customer_id": "c001",
-    "agent_alias_arn": "arn:aws:bedrock:us-east-1:ACCOUNT:agent-alias/AGENT_ID/ALIAS_ID"
+    "session_id": "test-session-001"
   }'
 ```
 
 ## 📊 API Reference
 
-### Chat Endpoint
+### Authentication
+
+All API endpoints are protected with API key authentication. You need to include the API key in the `x-api-key` header:
+
+```bash
+curl -X POST "$API_ENDPOINT/chat" \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-api-key-value" \
+  -d '{"tenant_id": "t001", "customer_id": "c001", "message": "Hello"}'
+```
+
+To retrieve your API key:
+
+```bash
+cd infras/envs/us-east-1
+terraform output -raw secure_api_key
+```
+
+### Chat Endpoint (Agent Core)
 
 **POST** `/chat`
 
@@ -127,15 +169,29 @@ Request body:
   "message": "What is my journey status?",
   "tenant_id": "t001",
   "customer_id": "c001", 
-  "agent_alias_arn": "arn:aws:bedrock:us-east-1:ACCOUNT:agent-alias/AGENT_ID/ALIAS_ID"
+  "session_id": "unique-session-id-123",
+  "trace_id": "optional-trace-id-for-telemetry"
 }
+```
+
+Headers:
+```
+Content-Type: application/json
+x-api-key: your-api-key-value
 ```
 
 Response:
 ```json
 {
   "answer": "Your journey status shows you are currently in the onboarding stage with 3 tasks completed. Your last update was on September 15, 2025 at 13:46:56.",
-  "trace": []
+  "trace": [],
+  "session_id": "unique-session-id-123",
+  "trace_id": "generated-trace-id-xyz",
+  "analysis": {
+    "quality_score": 0.92,
+    "response_time_ms": 1245,
+    "sentiment": "positive"
+  }
 }
 ```
 
@@ -143,45 +199,75 @@ Response:
 
 - **Journey Status**: "What is my journey status?", "Show me my current progress"
 - **Assessment Summary**: "Can you give me my assessment summary?", "What are my assessment results?"
+- **Knowledge Queries**: "What is our vacation policy?", "How do I submit an expense report?"
 
-## 🗄️ Database Schema
+## 🛠️ AWS Profile Configuration
 
-The system uses a multi-tenant database schema:
+To configure AWS profiles for this project:
 
-```sql
--- Tenants table
-CREATE TABLE tenants (
-  id VARCHAR(10) PRIMARY KEY,
-  name VARCHAR(50) NOT NULL
-);
+1. Create or edit the `~/.aws/credentials` file:
 
--- Customers table  
-CREATE TABLE customers (
-  id VARCHAR(10) PRIMARY KEY,
-  tenant_id VARCHAR(10) REFERENCES tenants(id),
-  name VARCHAR(100) NOT NULL,
-  email VARCHAR(100)
-);
-
--- Journey tracking
-CREATE TABLE journeys (
-  id SERIAL PRIMARY KEY,
-  tenant_id VARCHAR(10) REFERENCES tenants(id),
-  customer_id VARCHAR(10) REFERENCES customers(id),
-  stage VARCHAR(50) NOT NULL,
-  tasks_completed INTEGER DEFAULT 0,
-  last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Assessment data
-CREATE TABLE assessments (
-  id SERIAL PRIMARY KEY,
-  tenant_id VARCHAR(10) REFERENCES tenants(id), 
-  customer_id VARCHAR(10) REFERENCES customers(id),
-  assessed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  q1 TEXT, q2 TEXT, q3 TEXT, q4 TEXT, q5 TEXT
-);
+```ini
+[cloudable]
+aws_access_key_id = YOUR_ACCESS_KEY
+aws_secret_access_key = YOUR_SECRET_KEY
+region = us-east-1
 ```
+
+2. Create or edit the `~/.aws/config` file:
+
+```ini
+[profile cloudable]
+region = us-east-1
+output = json
+```
+
+3. Export the profile before running Terraform:
+
+```bash
+export AWS_PROFILE=cloudable
+terraform apply -var-file=tenants.tfvars
+```
+
+4. For GitHub Actions, configure the following secrets:
+
+```
+AWS_ROLE_TO_ASSUME=arn:aws:iam::YOUR_ACCOUNT_ID:role/github-actions-role
+```
+
+## 📈 Monitoring & Telemetry
+
+### Langfuse Observability
+
+The platform integrates Langfuse for advanced LLM observability:
+
+- **Session-Based Tracing**: Track multi-turn conversations
+- **Response Quality Scoring**: Automatically evaluate response quality
+- **Latency Monitoring**: Track end-to-end and component-level response times
+- **Error Analysis**: Identify patterns in failed interactions
+- **User Feedback Collection**: Capture explicit and implicit user feedback
+
+### CloudWatch Dashboard
+
+Access the CloudWatch dashboard:
+- **AI Performance**: `https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=Cloudable-AI-Performance-dev`
+- **Security Events**: `https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=Cloudable-AI-Security-dev`
+
+## 🧪 Testing
+
+### Local Testing
+
+Run the local workflow test script to validate configurations:
+
+```bash
+./local_workflow_test.sh
+```
+
+### GitHub Actions Testing
+
+1. Go to GitHub Actions > API Tests > Run workflow
+2. Select the environment: `dev`
+3. Click "Run workflow"
 
 ## 🔧 Configuration
 
@@ -189,8 +275,12 @@ CREATE TABLE assessments (
 
 The system uses these key environment variables:
 
+- `TELEMETRY_ENABLED`: Enable/disable telemetry (default: true)
+- `LANGFUSE_PUBLIC_KEY`: Langfuse public key for telemetry
+- `LANGFUSE_SECRET_KEY`: Langfuse secret key for telemetry
+- `LANGFUSE_HOST`: Langfuse API host (default: https://api.langfuse.com)
 - `DB_CLUSTER_ARN`: Aurora cluster ARN
-- `DB_SECRET_ARN`: Database credentials secret ARN  
+- `DB_SECRET_ARN`: Database credentials secret ARN
 - `DB_NAME`: Database name
 - `REGION`: AWS region
 
@@ -205,100 +295,14 @@ Key variables in `tenants.tfvars`:
 | `tenants` | Tenant configuration | `{t001 = {name = "acme"}}` |
 | `enable_bedrock_agents` | Enable Bedrock agents | `true` |
 | `alert_emails` | Notification emails | `["admin@domain.com"]` |
-
-## 🔒 Security
-
-- **Network Isolation**: All resources deployed in private VPC subnets
-- **Encryption**: Data encrypted at rest and in transit
-- **IAM**: Least privilege access with specific resource permissions
-- **Multi-tenancy**: Database-level tenant isolation
-- **Secrets Management**: AWS Secrets Manager for sensitive data
-
-## 📈 Monitoring
-
-The platform includes comprehensive monitoring:
-
-- **CloudWatch Logs**: Application and infrastructure logs
-- **CloudWatch Metrics**: Performance and usage metrics
-- **AWS Budgets**: Cost monitoring and alerts
-- **Lambda Insights**: Function performance monitoring
-
-## 🚀 Deployment Environments
-
-### Development
-```bash
-cd infras/envs/us-east-1
-terraform workspace select dev  # or create if doesn't exist
-terraform apply -var-file=tenants.tfvars
-```
-
-### Production
-```bash
-cd infras/envs/us-east-1
-terraform workspace select prod
-terraform apply -var-file=tenants.prod.tfvars
-```
-
-## 🧪 Testing
-
-### Unit Tests
-```bash
-# Test Lambda functions locally
-cd infras/lambdas/db_actions
-python -m pytest tests/
-
-cd ../orchestrator  
-python -m pytest tests/
-```
-
-### Integration Tests
-```bash
-# Test full API flow
-./scripts/test-api.sh
-```
-
-## 📝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🤝 Support
-
-For support and questions:
-
-- **Issues**: [GitHub Issues](https://github.com/CloudBridgeTechnologies/cloudable.ai/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/CloudBridgeTechnologies/cloudable.ai/discussions)
-- **Email**: support@cloudbridge.co.uk
-
-## 📚 Documentation
-
-### API Documentation
-- [API Security Guide](docs/api/API_SECURITY.md) - Detailed guide on API key authentication and security
-- [API Testing Guide](docs/api/API_TESTING_GUIDE.md) - Guide for testing API endpoints with Postman
-- [API Security Test Results](docs/api/API_SECURITY_TEST_RESULTS.md) - Results of API security testing
-
-### Knowledge Base Documentation
-- [KB Setup Guide](docs/knowledge-base/KB_SETUP_GUIDE.md) - Guide for setting up the knowledge base
-- [KB Implementation Summary](docs/knowledge-base/KB_IMPLEMENTATION_SUMMARY.md) - Summary of knowledge base implementation
-- [AWS API Knowledge Base Testing](AWS_API_KNOWLEDGE_BASE_TESTING.md) - Guide for testing knowledge base using AWS APIs
-
-### Other Documentation
-- [Security Documentation](docs/SECURITY.md) - Comprehensive security documentation
-- [Integration Fix Report](docs/integration/INTEGRATION_FIX_REPORT.md) - Report on fixing integration issues
-- [Cleanup Recommendations](docs/maintenance/CLEANUP_RECOMMENDATIONS.md) - Recommendations for cleaning up the codebase
+| `agent_model_arn` | Bedrock model ARN | `anthropic.claude-3-sonnet-20240229-v1:0` |
 
 ## 🙏 Acknowledgments
 
 - AWS Bedrock team for the amazing AI capabilities
 - Terraform team for infrastructure automation
 - Claude AI for powering the conversational interface
+- Langfuse for advanced LLM observability
 
 ---
 
