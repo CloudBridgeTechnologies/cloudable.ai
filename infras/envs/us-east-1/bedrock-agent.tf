@@ -2,7 +2,7 @@ resource "aws_bedrockagent_agent" "tenant" {
   for_each                = var.enable_bedrock_agents ? var.tenants : {}
   agent_name              = "agent-${var.env}-${each.value.name}"
   instruction             = "You are the ${each.value.name} assistant. Allowed intents: journey.status, assessment.summary. For journey.status, call the rds_read action group POST /journey_status with JSON {tenant_id, customer_id}. For assessment.summary, call POST /assessments_summary with JSON {tenant_id, customer_id}. Do not answer from your own knowledge; always call the action to retrieve data, then return the action result. Refuse all other intents."
-  foundation_model        = var.agent_model_arn
+  foundation_model        = "anthropic.claude-3-sonnet-20240229-v1:0"
   agent_resource_role_arn = aws_iam_role.agent.arn
 
   # guardrail_configuration {
@@ -91,44 +91,58 @@ EOF
   skip_resource_in_use_check = true
 }
 
-resource "terraform_data" "prepare_agent" {
-  for_each = var.enable_bedrock_agents ? var.tenants : {}
-  triggers_replace = {
-    a = sha256(jsonencode(aws_bedrockagent_agent.tenant[each.key]))
-    g = sha256(jsonencode(aws_bedrockagent_agent_action_group.tenant_db[each.key]))
-  }
-  provisioner "local-exec" {
-    command = "aws bedrock-agent prepare-agent --agent-id ${aws_bedrockagent_agent.tenant[each.key].id} --region ${var.region} --output json --no-cli-pager"
-  }
-}
+# Temporarily disabled terraform_data resources to avoid circular dependency
+# resource "terraform_data" "prepare_agent" {
+#   for_each = var.enable_bedrock_agents ? var.tenants : {}
+#   triggers_replace = {
+#     a = sha256(jsonencode(aws_bedrockagent_agent.tenant[each.key]))
+#     g = sha256(jsonencode(aws_bedrockagent_agent_action_group.tenant_db[each.key]))
+#   }
+#   provisioner "local-exec" {
+#     command = "aws bedrock-agent prepare-agent --agent-id ${aws_bedrockagent_agent.tenant[each.key].id} --region ${var.region} --output json --no-cli-pager"
+#   }
+# }
 
-resource "terraform_data" "wait_agent_prepared" {
-  for_each = var.enable_bedrock_agents ? var.tenants : {}
-  triggers_replace = {
-    a = sha256(jsonencode(terraform_data.prepare_agent[each.key].id))
-  }
-  provisioner "local-exec" {
-    interpreter = ["/bin/sh", "-c"]
-    command = <<EOC
-set -e
-for i in $(seq 1 60); do
-  status=$(aws bedrock-agent get-agent --agent-id ${aws_bedrockagent_agent.tenant[each.key].id} --region ${var.region} --query agent.agentStatus --output text 2>/dev/null || echo UNKNOWN)
-  if [ "$status" = "PREPARED" ]; then
-    exit 0
-  fi
-  sleep 10
-done
-echo "Agent did not reach PREPARED state in time"
-exit 1
-EOC
-  }
-}
+# resource "terraform_data" "wait_agent_prepared" {
+#   for_each = var.enable_bedrock_agents ? var.tenants : {}
+#   triggers_replace = {
+#     a = sha256(jsonencode(terraform_data.prepare_agent[each.key].id))
+#   }
+#   provisioner "local-exec" {
+#     interpreter = ["/bin/sh", "-c"]
+#     command = <<EOC
+# set -e
+# for i in $(seq 1 60); do
+#   status=$(aws bedrock-agent get-agent --agent-id ${aws_bedrockagent_agent.tenant[each.key].id} --region ${var.region} --query agent.agentStatus --output text 2>/dev/null || echo UNKNOWN)
+#   if [ "$status" = "PREPARED" ]; then
+#     exit 0
+#   fi
+#   sleep 10
+# done
+# echo "Agent did not reach PREPARED state in time"
+# exit 1
+# EOC
+#   }
+# }
+
+ 
+
 
 resource "aws_bedrockagent_agent_alias" "tenant" {
   for_each         = var.enable_bedrock_agents ? var.tenants : {}
   agent_id         = aws_bedrockagent_agent.tenant[each.key].id
   agent_alias_name = "live"
   description      = "Live alias"
-  depends_on       = [terraform_data.wait_agent_prepared]
+  # depends_on       = [terraform_data.wait_agent_prepared]
+}
+
+resource "aws_bedrockagent_agent_knowledge_base_association" "tenant" {
+  for_each           = var.enable_bedrock_agents ? var.tenants : {}
+  agent_id           = aws_bedrockagent_agent.tenant[each.key].id
+  agent_version      = "DRAFT"
+  knowledge_base_id  = aws_bedrockagent_knowledge_base.tenant[each.key].id
+  knowledge_base_state = "ENABLED"
+  description        = "Knowledge base association for ${each.value.name}"
+  depends_on         = [aws_bedrockagent_agent_action_group.tenant_db]
 }
 
