@@ -28,7 +28,7 @@ resource "aws_api_gateway_rest_api" "secure_api" {
   })
 }
 
-# API Gateway Stage with optimal configuration
+# API Gateway Stage with optimal configuration and logging
 resource "aws_api_gateway_stage" "secure_api" {
   deployment_id = aws_api_gateway_deployment.secure_api.id
   rest_api_id   = aws_api_gateway_rest_api.secure_api.id
@@ -41,25 +41,26 @@ resource "aws_api_gateway_stage" "secure_api" {
   cache_cluster_enabled = var.env == "prod" ? true : false
   cache_cluster_size    = var.env == "prod" ? "0.5" : null
   
-  # Access logs disabled - requires CloudWatch Logs role ARN to be set in account settings
-  # To enable logs, set up the role in the AWS Console first
-  # access_log_settings {
-  #   destination_arn = aws_cloudwatch_log_group.api_gateway_logs.arn
-  #   format = jsonencode({
-  #     requestId      = "$context.requestId"
-  #     ip             = "$context.identity.sourceIp"
-  #     requestTime    = "$context.requestTime"
-  #     httpMethod     = "$context.httpMethod"
-  #     routeKey       = "$context.routeKey"
-  #     status         = "$context.status"
-  #     protocol       = "$context.protocol"
-  #     responseLength = "$context.responseLength"
-  #     userAgent      = "$context.identity.userAgent"
-  #     apiKey         = "$context.identity.apiKey"
-  #     path           = "$context.path"
-  #     latency        = "$context.responseLatency"
-  #   })
-  # }
+  # Enable access logs with CloudWatch Log Group
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_gateway_logs.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      routeKey       = "$context.routeKey"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+      userAgent      = "$context.identity.userAgent"
+      apiKey         = "$context.identity.apiKey"
+      path           = "$context.path"
+      latency        = "$context.responseLatency"
+      errorMessage   = "$context.error.message"
+      integrationError = "$context.integration.error"
+    })
+  }
   
   # Add variables for environment-specific configurations
   variables = {
@@ -70,6 +71,11 @@ resource "aws_api_gateway_stage" "secure_api" {
   }
   
   tags = local.tags
+  
+  depends_on = [
+    aws_cloudwatch_log_group.api_gateway_logs,
+    aws_api_gateway_account.account
+  ]
 }
 
 # API Gateway CloudWatch Log Group
@@ -324,8 +330,8 @@ resource "aws_api_gateway_method_settings" "all" {
   
   settings {
     metrics_enabled        = true
-    # Logging is disabled - requires CloudWatch Logs role ARN to be set in account settings
-    # logging_level        = "INFO"
+    # Enable detailed logging now that we have the CloudWatch role properly configured
+    logging_level          = "INFO"
     caching_enabled        = var.env == "prod" ? true : false
     cache_ttl_in_seconds   = 300
     throttling_rate_limit  = var.api_throttling_rate_limit

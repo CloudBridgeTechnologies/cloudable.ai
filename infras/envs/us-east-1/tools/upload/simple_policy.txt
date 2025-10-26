@@ -1,0 +1,19 @@
+Company Vacation Policy:
+- New employees: 15 days paid vacation annually
+- After 3 years: 20 days paid vacation annually
+- After 7 years: 25 days paid vacation annually
+- Vacation requests require 2 weeks advance notice
+- Maximum 5 consecutive days without manager approval
+
+Security Policies:
+- All employees must use strong passwords (12+ characters)
+- Two-factor authentication required for all systems
+- VPN access mandatory for remote work
+- Report security incidents immediately to IT
+- No personal devices on corporate network
+
+Assessment Process:
+- Quarterly performance reviews required
+- 360-degree feedback from peers and managers
+- Goal setting and tracking via company portal
+- Professional development plans updated annually

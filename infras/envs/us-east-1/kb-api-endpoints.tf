@@ -297,3 +297,5 @@ resource "null_resource" "kb_api_deployment_dependencies" {
     dependencies = sha1(jsonencode(local.kb_api_dependencies))
   }
 }
+
+

@@ -4,14 +4,14 @@ resource "aws_security_group" "lambda_sg" {
   name        = "lambda-sg-${var.env}"
   description = "Security group for Lambda functions"
   vpc_id      = data.aws_vpc.main[0].id
-  
+
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  
+
   tags = merge(local.tags, {
     Name = "lambda-sg-${var.env}"
   })
@@ -19,7 +19,7 @@ resource "aws_security_group" "lambda_sg" {
 
 # Data source for VPC (simplified to avoid circular dependency)
 data "aws_vpc" "main" {
-  count = length(var.lambda_subnet_ids) > 0 ? 1 : 0
+  count   = length(var.lambda_subnet_ids) > 0 ? 1 : 0
   default = true
 }
 
@@ -35,10 +35,10 @@ resource "aws_iam_role" "document_summarizer" {
   name               = "document-summarizer-${var.env}-${var.region}"
   description        = "IAM role for document summarizer Lambda function"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
-  
+
   # Add permission boundary for organizational governance
   permissions_boundary = var.permission_boundary_arn
-  
+
   tags = merge(local.tags, {
     Service = "DocumentSummarization"
   })
@@ -48,13 +48,13 @@ resource "aws_iam_role" "document_summarizer" {
 resource "aws_iam_policy" "document_summarizer_logs" {
   name        = "document-summarizer-logs-${var.env}-${var.region}"
   description = "IAM policy for document summarizer Lambda CloudWatch logs"
-  
+
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
       {
-        Effect   = "Allow",
-        Action   = [
+        Effect = "Allow",
+        Action = [
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
           "logs:PutLogEvents"
@@ -71,7 +71,7 @@ resource "aws_iam_policy" "document_summarizer_logs" {
 resource "aws_iam_policy" "document_summarizer_s3_read" {
   name        = "document-summarizer-s3-read-${var.env}-${var.region}"
   description = "IAM policy for document summarizer Lambda to read from tenant buckets"
-  
+
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
@@ -97,7 +97,7 @@ resource "aws_iam_policy" "document_summarizer_s3_read" {
 resource "aws_iam_policy" "document_summarizer_s3_write" {
   name        = "document-summarizer-s3-write-${var.env}-${var.region}"
   description = "IAM policy for document summarizer Lambda to write to summary buckets"
-  
+
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
@@ -121,7 +121,7 @@ resource "aws_iam_policy" "document_summarizer_s3_write" {
 resource "aws_iam_policy" "document_summarizer_bedrock" {
   name        = "document-summarizer-bedrock-${var.env}-${var.region}"
   description = "IAM policy for document summarizer Lambda to invoke Bedrock models"
-  
+
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
@@ -149,7 +149,7 @@ resource "aws_iam_policy" "document_summarizer_bedrock" {
 resource "aws_iam_policy" "document_summarizer_kms" {
   name        = "document-summarizer-kms-${var.env}-${var.region}"
   description = "IAM policy for document summarizer Lambda to use KMS encryption"
-  
+
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
@@ -169,7 +169,7 @@ resource "aws_iam_policy" "document_summarizer_kms" {
 resource "aws_iam_policy" "document_summarizer_sqs" {
   name        = "document-summarizer-sqs-${var.env}-${var.region}"
   description = "IAM policy for document summarizer Lambda to use SQS DLQ"
-  
+
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [
@@ -226,27 +226,27 @@ resource "aws_lambda_function" "document_summarizer" {
   source_code_hash = data.archive_file.document_summarizer_zip.output_base64sha256
   handler          = "main.handle_document_event"
   runtime          = "python3.12"
-  
+
   # Configure generous timeout and memory for PDF processing and AI model calls
-  timeout          = 900  # 15 minutes for processing very large documents
-  memory_size      = 2048 # 2GB for handling large PDFs and chunked summarization
-  
+  timeout     = 900  # 15 minutes for processing very large documents
+  memory_size = 2048 # 2GB for handling large PDFs and chunked summarization
+
   # Production-ready function configuration
-  reserved_concurrent_executions = 10  # Limit concurrent executions
-  
+  reserved_concurrent_executions = 10 # Limit concurrent executions
+
   # Environment variables
   environment {
     variables = {
-      REGION              = var.region
-      ENV                 = var.env
-      CLAUDE_MODEL_ID     = "anthropic.claude-3-sonnet-20240229-v1:0"
-      MAX_CHUNK_SIZE      = "8000"
+      REGION                = var.region
+      ENV                   = var.env
+      CLAUDE_MODEL_ID       = "anthropic.claude-3-sonnet-20240229-v1:0"
+      MAX_CHUNK_SIZE        = "8000"
       SUMMARY_BUCKET_SUFFIX = "summaries"
       # Add environment-specific configuration
-      LOG_LEVEL           = var.env == "prod" ? "INFO" : "DEBUG"
+      LOG_LEVEL = var.env == "prod" ? "INFO" : "DEBUG"
     }
   }
-  
+
   # VPC configuration for enhanced security (only if subnets are provided)
   dynamic "vpc_config" {
     for_each = length(var.lambda_subnet_ids) > 0 ? [1] : []
@@ -255,17 +255,17 @@ resource "aws_lambda_function" "document_summarizer" {
       security_group_ids = [aws_security_group.lambda_sg[0].id]
     }
   }
-  
+
   # Dead letter queue for failed events
   dead_letter_config {
     target_arn = aws_sqs_queue.document_summarizer_dlq.arn
   }
-  
+
   # Enable X-Ray tracing for performance monitoring
   tracing_config {
     mode = "Active"
   }
-  
+
   # Add comprehensive tags for resource governance
   tags = merge(local.tags, {
     Service     = "DocumentSummarization"
@@ -273,6 +273,15 @@ resource "aws_lambda_function" "document_summarizer" {
     CostCenter  = "AI-Processing"
     Environment = var.env
   })
+
+  depends_on = [
+    aws_iam_role_policy_attachment.document_summarizer_logs_attach,
+    aws_iam_role_policy_attachment.document_summarizer_s3_read_attach,
+    aws_iam_role_policy_attachment.document_summarizer_s3_write_attach,
+    aws_iam_role_policy_attachment.document_summarizer_bedrock_attach,
+    aws_iam_role_policy_attachment.document_summarizer_kms_attach,
+    aws_iam_role_policy_attachment.document_summarizer_sqs_attach
+  ]
 }
 
 # Dead letter queue for failed summarization events
@@ -282,10 +291,10 @@ resource "aws_sqs_queue" "document_summarizer_dlq" {
   max_message_size           = 262144  # 256 KB
   message_retention_seconds  = 1209600 # 14 days
   visibility_timeout_seconds = 30
-  
+
   # Enable encryption
   sqs_managed_sse_enabled = true
-  
+
   tags = merge(local.tags, {
     Service = "DocumentSummarization"
   })

@@ -5,16 +5,6 @@ data "aws_iam_policy_document" "assume_bedrock" {
       type        = "Service"
       identifiers = ["bedrock.amazonaws.com"]
     }
-    condition {
-      test     = "StringEquals"
-      variable = "aws:SourceAccount"
-      values   = [data.aws_caller_identity.current.account_id]
-    }
-    condition {
-      test     = "ArnLike"
-      variable = "aws:SourceArn"
-      values   = ["arn:aws:bedrock:${var.region}:${data.aws_caller_identity.current.account_id}:agent/*"]
-    }
   }
 }
 
@@ -32,19 +22,13 @@ resource "aws_iam_role_policy" "agent" {
       { 
         Effect = "Allow", 
         Action = [
-          "bedrock:*",
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream"
         ], 
-        Resource = "*" 
-      },
-      { 
-        Effect = "Allow",
-        Action = [
-          "bedrock:InvokeModel",
-          "bedrock:InvokeModelWithResponseStream"
-        ],
-        Resource = "arn:aws:bedrock:*::foundation-model/anthropic.claude-*"
+        Resource = [
+          "arn:aws:bedrock:${var.region}::foundation-model/anthropic.claude-*",
+          "arn:aws:bedrock:${var.region}:${data.aws_caller_identity.current.account_id}:inference-profile/*"
+        ]
       },
       {
         Effect = "Allow",
@@ -53,6 +37,13 @@ resource "aws_iam_role_policy" "agent" {
           "bedrock:ListFoundationModels"
         ],
         Resource = "*"
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "bedrock-agent:InvokeAgent"
+        ],
+        Resource = "arn:aws:bedrock:${var.region}:${data.aws_caller_identity.current.account_id}:agent/*"
       },
       { 
         Effect = "Allow", 
@@ -78,10 +69,80 @@ resource "aws_iam_role_policy" "kb" {
     Statement = [
       {
         Effect = "Allow",
-        Action = ["s3:GetObject", "s3:ListBucket"],
+        Action = [
+          "s3:GetObject", 
+          "s3:ListBucket",
+          "s3:GetObjectVersion"
+        ],
         Resource = [
           aws_s3_bucket.tenant[each.key].arn,
           "${aws_s3_bucket.tenant[each.key].arn}/*"
+        ]
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "aoss:APIAccessAll",
+          "aoss:CreateIndex",
+          "aoss:DeleteIndex",
+          "aoss:UpdateIndex",
+          "aoss:DescribeIndex",
+          "aoss:ReadDocument",
+          "aoss:WriteDocument",
+          "aoss:BatchGetDocument",
+          "aoss:Search"
+        ],
+        Resource = [
+          aws_opensearchserverless_collection.kb[each.key].arn,
+          "${aws_opensearchserverless_collection.kb[each.key].arn}/*"
+        ]
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "bedrock:InvokeModel"
+        ],
+        Resource = [
+          "arn:aws:bedrock:${var.region}::foundation-model/amazon.titan-embed-text-v1"
+        ]
+      }
+    ]
+  })
+}
+
+# Create policy for KB Manager access to OpenSearch
+resource "aws_iam_policy" "kb_manager_opensearch" {
+  name        = "kb-manager-opensearch-${var.env}-${var.region}"
+  description = "IAM policy for KB Manager to access OpenSearch Serverless"
+  
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "aoss:APIAccessAll"
+        ],
+        Resource = [
+          for tenant_key, tenant in var.tenants :
+          aws_opensearchserverless_collection.kb[tenant_key].arn
+        ]
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "aoss:CreateIndex",
+          "aoss:DeleteIndex",
+          "aoss:UpdateIndex",
+          "aoss:DescribeIndex",
+          "aoss:ReadDocument",
+          "aoss:WriteDocument",
+          "aoss:BatchGetDocument",
+          "aoss:Search"
+        ],
+        Resource = [
+          for tenant_key, tenant in var.tenants :
+          "${aws_opensearchserverless_collection.kb[tenant_key].arn}/*"
         ]
       }
     ]

@@ -11,6 +11,13 @@ resource "aws_iam_role" "s3_helper" {
   tags               = local.tags
 }
 
+# CloudWatch Log Group for S3 Helper Lambda
+resource "aws_cloudwatch_log_group" "s3_helper_logs" {
+  name              = "/aws/lambda/s3-helper-${var.env}"
+  retention_in_days = 30
+  tags = local.tags
+}
+
 resource "aws_iam_role_policy" "s3_helper" {
   role = aws_iam_role.s3_helper.id
   policy = jsonencode({
@@ -19,7 +26,10 @@ resource "aws_iam_role_policy" "s3_helper" {
       {
         Effect   = "Allow",
         Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"],
-        Resource = "*"
+        Resource = [
+          aws_cloudwatch_log_group.s3_helper_logs.arn,
+          "${aws_cloudwatch_log_group.s3_helper_logs.arn}:*"
+        ]
       },
       {
         Effect = "Allow",
@@ -38,9 +48,14 @@ resource "aws_iam_role_policy" "s3_helper" {
       },
       {
         Effect = "Allow",
-        Action = [
-          "lambda:InvokeFunction"
-        ],
+        Action = ["s3:ListBucket"],
+        Resource = [
+          for tenant_key, tenant in var.tenants : aws_s3_bucket.tenant[tenant_key].arn
+        ]
+      },
+      {
+        Effect = "Allow",
+        Action = ["lambda:InvokeFunction"],
         Resource = aws_lambda_function.kb_sync_trigger.arn
       },
       {
@@ -55,23 +70,56 @@ resource "aws_iam_role_policy" "s3_helper" {
   })
 }
 
+# Dead letter queue for S3 Helper Lambda
+resource "aws_sqs_queue" "s3_helper_dlq" {
+  name                       = "s3-helper-dlq-${var.env}"
+  delay_seconds              = 0
+  max_message_size           = 262144  # 256 KB
+  message_retention_seconds  = 1209600 # 14 days
+  visibility_timeout_seconds = 30
+  sqs_managed_sse_enabled    = true
+  tags = local.tags
+}
+
+# Add DLQ policy to S3 Helper IAM role
+resource "aws_iam_role_policy" "s3_helper_dlq" {
+  role = aws_iam_role.s3_helper.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "sqs:SendMessage"
+        ],
+        Resource = aws_sqs_queue.s3_helper_dlq.arn
+      }
+    ]
+  })
+}
+
 resource "aws_lambda_function" "s3_helper" {
   function_name    = "s3-helper-${var.env}"
-  role            = aws_iam_role.s3_helper.arn
-  filename        = data.archive_file.s3_helper_zip.output_path
+  role             = aws_iam_role.s3_helper.arn
+  filename         = data.archive_file.s3_helper_zip.output_path
   source_code_hash = data.archive_file.s3_helper_zip.output_base64sha256
-  handler         = "main.handle_s3_event"
-  runtime         = "python3.12"
-  timeout         = 900  # Increased to 15 minutes
-  
+  handler          = "main.handle_s3_event"
+  runtime          = "python3.12"
+  timeout          = 900 # Increased to 15 minutes
+
   environment {
     variables = {
-      REGION = var.region
-      ENV    = var.env
+      REGION           = var.region
+      ENV              = var.env
       KB_SYNC_FUNCTION = aws_lambda_function.kb_sync_trigger.function_name
     }
   }
   
+  # Add dead letter configuration
+  dead_letter_config {
+    target_arn = aws_sqs_queue.s3_helper_dlq.arn
+  }
+
   tags = local.tags
 }
 
