@@ -121,9 +121,7 @@ terraform plan -out=tfplan
 # Handle different modes
 if [ "$IMPORT_MODE" = true ]; then
     echo -e "${BLUE}Running import script...${NC}"
-    cd ../../
     ./import_existing_resources.sh $ENV $REGION
-    cd $WORKING_DIR
     echo -e "${GREEN}Import completed.${NC}"
     exit 0
 fi

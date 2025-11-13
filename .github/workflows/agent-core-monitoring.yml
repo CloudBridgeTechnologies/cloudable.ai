@@ -1,304 +1,335 @@
 name: Agent Core Monitoring
-
-on:
+true:
   schedule:
-    - cron: '0 */6 * * *'  # Run every 6 hours
+  - cron: 0 */6 * * *
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to monitor'
+        description: Environment to monitor
         required: true
-        default: 'dev'
+        default: dev
         type: choice
         options:
-          - dev
-          - qa
-          - prod
-
-
+        - dev
+        - qa
+        - prod
 permissions:
-  id-token: write  # Required for AWS credentials
-  contents: read   # Required for checkout
-  pull-requests: write  # Required for PR comments
-
+  id-token: write
+  contents: read
+  pull-requests: write
 env:
   AWS_REGION: us-east-1
   WORKING_DIR: infras/envs/us-east-1
   PYTHON_VERSION: '3.9'
-
 jobs:
   monitor-agent-core:
     name: Monitor Agent Core
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    - name: Install dependencies
+      run: 'python -m pip install --upgrade pip
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
+        pip install boto3 requests matplotlib pandas
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install boto3 requests matplotlib pandas
-
-      - name: Check Agent Status
-        run: |
-          cat > check_agent_status.py << 'EOF'
-          import boto3
-          import json
-          import sys
-          import os
-          import time
-          from datetime import datetime, timedelta
-          
-          region = os.environ.get("AWS_REGION", "us-east-1")
-          env = os.environ.get("ENVIRONMENT", "dev")
-          
-          bedrock_agent = boto3.client('bedrock-agent', region_name=region)
-          cloudwatch = boto3.client('cloudwatch', region_name=region)
-          ssm = boto3.client('ssm', region_name=region)
-          
-          def check_agent_status():
-              # Get agent ID from SSM parameter
-              try:
-                  param_name = f"/cloudable/{env}/agent/t001/alias_arn"
-                  response = ssm.get_parameter(Name=param_name)
-                  alias_arn = response['Parameter']['Value']
-                  
-                  # Parse agent_id from ARN
-                  resource = alias_arn.split(":", 5)[5]
-                  _, agent_id, _ = resource.split("/")
-                  
-                  # Check agent status
-                  response = bedrock_agent.get_agent(agentId=agent_id)
-                  status = response['agent']['agentStatus']
-                  
-                  print(f"Agent ID: {agent_id}")
-                  print(f"Status: {status}")
-                  
-                  return status == "PREPARED"
-              except Exception as e:
-                  print(f"Error checking agent status: {str(e)}")
-                  return False
-          
-          def check_agent_metrics():
-              end_time = datetime.utcnow()
-              start_time = end_time - timedelta(hours=6)
-              
-              metrics = [
-                  {
-                      "name": "AgentInvocationCount",
-                      "threshold": 0,
-                      "comparison": "GreaterThanThreshold"
-                  },
-                  {
-                      "name": "AgentSuccessfulInvocationCount",
-                      "threshold": 0,
-                      "comparison": "GreaterThanThreshold"
-                  }
-              ]
-              
-              results = {}
-              
-              for metric in metrics:
-                  response = cloudwatch.get_metric_statistics(
-                      Namespace="AWS/Bedrock",
-                      MetricName=metric["name"],
-                      StartTime=start_time,
-                      EndTime=end_time,
-                      Period=3600,
-                      Statistics=["Sum"]
-                  )
-                  
-                  datapoints = response.get("Datapoints", [])
-                  value = sum([dp["Sum"] for dp in datapoints]) if datapoints else 0
-                  
-                  print(f"{metric['name']}: {value}")
-                  
-                  # Check if metric meets threshold
-                  meets_threshold = False
-                  if metric["comparison"] == "GreaterThanThreshold":
-                      meets_threshold = value > metric["threshold"]
-                  elif metric["comparison"] == "LessThanThreshold":
-                      meets_threshold = value < metric["threshold"]
-                  
-                  results[metric["name"]] = {
-                      "value": value,
-                      "meets_threshold": meets_threshold
-                  }
-              
-              return all(result["meets_threshold"] for result in results.values())
-          
-          if __name__ == "__main__":
-              agent_status_ok = check_agent_status()
-              metrics_ok = check_agent_metrics()
-              
-              if agent_status_ok and metrics_ok:
-                  print("Agent Core status: HEALTHY")
-                  sys.exit(0)
-              else:
-                  print("Agent Core status: UNHEALTHY")
-                  sys.exit(1)
-          EOF
-          
-          export ENVIRONMENT="${{ github.event.inputs.environment || 'dev' }}"
-          python check_agent_status.py
-
-      - name: Check Telemetry Status
-        if: success() || failure()
-        run: |
-          cat > check_telemetry.py << 'EOF'
-          import boto3
-          import json
-          import sys
-          import os
-          from datetime import datetime, timedelta
-          
-          region = os.environ.get("AWS_REGION", "us-east-1")
-          env = os.environ.get("ENVIRONMENT", "dev")
-          
-          logs = boto3.client('logs', region_name=region)
-          
-          def check_log_groups():
-              telemetry_log_group = f"/aws/bedrock/agent-core-telemetry-{env}"
-              tracing_log_group = f"/aws/bedrock/agent-core-tracing-{env}"
-              
-              log_groups = [telemetry_log_group, tracing_log_group]
-              results = {}
-              
-              for log_group in log_groups:
-                  try:
-                      response = logs.describe_log_streams(
-                          logGroupName=log_group,
-                          orderBy="LastEventTime",
-                          descending=True,
-                          limit=5
-                      )
-                      
-                      log_streams = response.get("logStreams", [])
-                      if not log_streams:
-                          print(f"No log streams found in {log_group}")
-                          results[log_group] = False
-                          continue
-                      
-                      latest_stream = log_streams[0]
-                      latest_event_time = latest_stream.get("lastEventTimestamp", 0)
-                      
-                      # Convert timestamp to datetime
-                      latest_time = datetime.fromtimestamp(latest_event_time / 1000)
-                      current_time = datetime.now()
-                      
-                      # Check if logs are recent (within last 24 hours)
-                      time_diff = current_time - latest_time
-                      has_recent_logs = time_diff.total_seconds() < 86400  # 24 hours
-                      
-                      print(f"{log_group}: Latest event at {latest_time}")
-                      print(f"Has recent logs: {has_recent_logs}")
-                      
-                      results[log_group] = has_recent_logs
-                  
-                  except Exception as e:
-                      print(f"Error checking log group {log_group}: {str(e)}")
-                      results[log_group] = False
-              
-              return all(results.values())
-          
-          if __name__ == "__main__":
-              telemetry_ok = check_log_groups()
-              
-              if telemetry_ok:
-                  print("Telemetry status: HEALTHY")
-                  sys.exit(0)
-              else:
-                  print("Telemetry status: UNHEALTHY")
-                  sys.exit(1)
-          EOF
-          
-          export ENVIRONMENT="${{ github.event.inputs.environment || 'dev' }}"
-          python check_telemetry.py
-
-      - name: Generate Monitoring Report
-        if: always()
-        run: |
-          cat > monitoring_report.md << EOF
-          # Agent Core Monitoring Report
-          
-          **Environment:** ${{ github.event.inputs.environment || 'dev' }}
-          **Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          
-          ## Status Summary
-          
-          | Component | Status |
-          |-----------|--------|
-          | Agent Core | ${{ job.steps[3].conclusion == 'success' && '✅ HEALTHY' || '❌ UNHEALTHY' }} |
-          | Telemetry | ${{ job.steps[4].conclusion == 'success' && '✅ HEALTHY' || '❌ UNHEALTHY' }} |
-          
-          ## Next Steps
-          
-          ${{ (job.steps[3].conclusion == 'success' && job.steps[4].conclusion == 'success') && '✅ All systems are operational. No action required.' || '❌ Issues detected. Please check the logs for more information.' }}
-          
-          EOF
-          
-          cat monitoring_report.md
-
-      - name: Upload Monitoring Report
-        uses: actions/upload-artifact@v3
-        with:
-          name: monitoring-report
-          path: monitoring_report.md
-          retention-days: 7
-
+        '
+    - name: Check Agent Status
+      run: "cat > check_agent_status.py << 'EOF'\nimport boto3\nimport json\nimport\
+        \ sys\nimport os\nimport time\nfrom datetime import datetime, timedelta\n\n\
+        region = os.environ.get(\"AWS_REGION\", \"us-east-1\")\nenv = os.environ.get(\"\
+        ENVIRONMENT\", \"dev\")\n\nbedrock_agent = boto3.client('bedrock-agent', region_name=region)\n\
+        cloudwatch = boto3.client('cloudwatch', region_name=region)\nssm = boto3.client('ssm',\
+        \ region_name=region)\n\ndef check_agent_status():\n    # Get agent ID from\
+        \ SSM parameter\n    try:\n        param_name = f\"/cloudable/{env}/agent/t001/alias_arn\"\
+        \n        response = ssm.get_parameter(Name=param_name)\n        alias_arn\
+        \ = response['Parameter']['Value']\n        \n        # Parse agent_id from\
+        \ ARN\n        resource = alias_arn.split(\":\", 5)[5]\n        _, agent_id,\
+        \ _ = resource.split(\"/\")\n        \n        # Check agent status\n    \
+        \    response = bedrock_agent.get_agent(agentId=agent_id)\n        status\
+        \ = response['agent']['agentStatus']\n        \n        print(f\"Agent ID:\
+        \ {agent_id}\")\n        print(f\"Status: {status}\")\n        \n        return\
+        \ status == \"PREPARED\"\n    except Exception as e:\n        print(f\"Error\
+        \ checking agent status: {str(e)}\")\n        return False\n\ndef check_agent_metrics():\n\
+        \    end_time = datetime.utcnow()\n    start_time = end_time - timedelta(hours=6)\n\
+        \    \n    metrics = [\n        {\n            \"name\": \"AgentInvocationCount\"\
+        ,\n            \"threshold\": 0,\n            \"comparison\": \"GreaterThanThreshold\"\
+        \n        },\n        {\n            \"name\": \"AgentSuccessfulInvocationCount\"\
+        ,\n            \"threshold\": 0,\n            \"comparison\": \"GreaterThanThreshold\"\
+        \n        }\n    ]\n    \n    results = {}\n    \n    for metric in metrics:\n\
+        \        response = cloudwatch.get_metric_statistics(\n            Namespace=\"\
+        AWS/Bedrock\",\n            MetricName=metric[\"name\"],\n            StartTime=start_time,\n\
+        \            EndTime=end_time,\n            Period=3600,\n            Statistics=[\"\
+        Sum\"]\n        )\n        \n        datapoints = response.get(\"Datapoints\"\
+        , [])\n        value = sum([dp[\"Sum\"] for dp in datapoints]) if datapoints\
+        \ else 0\n        \n        print(f\"{metric['name']}: {value}\")\n      \
+        \  \n        # Check if metric meets threshold\n        meets_threshold =\
+        \ False\n        if metric[\"comparison\"] == \"GreaterThanThreshold\":\n\
+        \            meets_threshold = value > metric[\"threshold\"]\n        elif\
+        \ metric[\"comparison\"] == \"LessThanThreshold\":\n            meets_threshold\
+        \ = value < metric[\"threshold\"]\n        \n        results[metric[\"name\"\
+        ]] = {\n            \"value\": value,\n            \"meets_threshold\": meets_threshold\n\
+        \        }\n    \n    return all(result[\"meets_threshold\"] for result in\
+        \ results.values())\n\nif __name__ == \"__main__\":\n    agent_status_ok =\
+        \ check_agent_status()\n    metrics_ok = check_agent_metrics()\n    \n   \
+        \ if agent_status_ok and metrics_ok:\n        print(\"Agent Core status: HEALTHY\"\
+        )\n        sys.exit(0)\n    else:\n        print(\"Agent Core status: UNHEALTHY\"\
+        )\n        sys.exit(1)\nEOF\n\nexport ENVIRONMENT=\"${{ github.event.inputs.environment\
+        \ || 'dev' }}\"\npython check_agent_status.py\n"
+    - name: Check Telemetry Status
+      if: success() || failure()
+      run: "cat > check_telemetry.py << 'EOF'\nimport boto3\nimport json\nimport sys\n\
+        import os\nfrom datetime import datetime, timedelta\n\nregion = os.environ.get(\"\
+        AWS_REGION\", \"us-east-1\")\nenv = os.environ.get(\"ENVIRONMENT\", \"dev\"\
+        )\n\nlogs = boto3.client('logs', region_name=region)\n\ndef check_log_groups():\n\
+        \    telemetry_log_group = f\"/aws/bedrock/agent-core-telemetry-{env}\"\n\
+        \    tracing_log_group = f\"/aws/bedrock/agent-core-tracing-{env}\"\n    \n\
+        \    log_groups = [telemetry_log_group, tracing_log_group]\n    results =\
+        \ {}\n    \n    for log_group in log_groups:\n        try:\n            response\
+        \ = logs.describe_log_streams(\n                logGroupName=log_group,\n\
+        \                orderBy=\"LastEventTime\",\n                descending=True,\n\
+        \                limit=5\n            )\n            \n            log_streams\
+        \ = response.get(\"logStreams\", [])\n            if not log_streams:\n  \
+        \              print(f\"No log streams found in {log_group}\")\n         \
+        \       results[log_group] = False\n                continue\n           \
+        \ \n            latest_stream = log_streams[0]\n            latest_event_time\
+        \ = latest_stream.get(\"lastEventTimestamp\", 0)\n            \n         \
+        \   # Convert timestamp to datetime\n            latest_time = datetime.fromtimestamp(latest_event_time\
+        \ / 1000)\n            current_time = datetime.now()\n            \n     \
+        \       # Check if logs are recent (within last 24 hours)\n            time_diff\
+        \ = current_time - latest_time\n            has_recent_logs = time_diff.total_seconds()\
+        \ < 86400  # 24 hours\n            \n            print(f\"{log_group}: Latest\
+        \ event at {latest_time}\")\n            print(f\"Has recent logs: {has_recent_logs}\"\
+        )\n            \n            results[log_group] = has_recent_logs\n      \
+        \  \n        except Exception as e:\n            print(f\"Error checking log\
+        \ group {log_group}: {str(e)}\")\n            results[log_group] = False\n\
+        \    \n    return all(results.values())\n\nif __name__ == \"__main__\":\n\
+        \    telemetry_ok = check_log_groups()\n    \n    if telemetry_ok:\n     \
+        \   print(\"Telemetry status: HEALTHY\")\n        sys.exit(0)\n    else:\n\
+        \        print(\"Telemetry status: UNHEALTHY\")\n        sys.exit(1)\nEOF\n\
+        \nexport ENVIRONMENT=\"${{ github.event.inputs.environment || 'dev' }}\"\n\
+        python check_telemetry.py\n"
+    - name: Generate Monitoring Report
+      if: always()
+      run: "cat > monitoring_report.md << EOF\n# Agent Core Monitoring Report\n\n\
+        **Environment:** ${{ github.event.inputs.environment || 'dev' }}\n**Date:**\
+        \ $(date -u +\"%Y-%m-%d %H:%M:%S UTC\")\n\n## Status Summary\n\n| Component\
+        \ | Status |\n|-----------|--------|\n| Agent Core | ${{ job.steps[3].conclusion\
+        \ == 'success' && '\u2705 HEALTHY' || '\u274C UNHEALTHY' }} |\n| Telemetry\
+        \ | ${{ job.steps[4].conclusion == 'success' && '\u2705 HEALTHY' || '\u274C\
+        \ UNHEALTHY' }} |\n\n## Next Steps\n\n${{ (job.steps[3].conclusion == 'success'\
+        \ && job.steps[4].conclusion == 'success') && '\u2705 All systems are operational.\
+        \ No action required.' || '\u274C Issues detected. Please check the logs for\
+        \ more information.' }}\n\nEOF\n\ncat monitoring_report.md\n"
+    - name: Upload Monitoring Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: monitoring-report
+        path: monitoring_report.md
+        retention-days: 7
   update-langfuse-credentials:
     name: Update Langfuse Credentials
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Update Langfuse Credentials
+      if: github.event_name == 'workflow_dispatch'
+      env:
+        LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+        LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+        LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
+        ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+      run: "if [[ -n \"$LANGFUSE_PUBLIC_KEY\" && -n \"$LANGFUSE_SECRET_KEY\" ]]; then\n\
+        \  # Update SSM parameters\n  aws ssm put-parameter \\\n    --name \"/cloudable/${ENVIRONMENT}/langfuse/public-key\"\
+        \ \\\n    --value \"${LANGFUSE_PUBLIC_KEY}\" \\\n    --type \"String\" \\\n\
+        \    --overwrite\n    \n  aws ssm put-parameter \\\n    --name \"/cloudable/${ENVIRONMENT}/langfuse/secret-key\"\
+        \ \\\n    --value \"${LANGFUSE_SECRET_KEY}\" \\\n    --type \"SecureString\"\
+        \ \\\n    --overwrite\n    \n  aws ssm put-parameter \\\n    --name \"/cloudable/${ENVIRONMENT}/langfuse/host\"\
+        \ \\\n    --value \"${LANGFUSE_HOST}\" \\\n    --type \"String\" \\\n    --overwrite\n\
+        \    \n  echo \"Langfuse credentials updated successfully.\"\nelse\n  echo\
+        \ \"Langfuse credentials not provided or incomplete. Skipping update.\"\n\
+        fi"
+'on':
+  workflow_dispatch: {}
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
+  schedule:
+  - cron: 0 */6 * * *
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to monitor
+        required: true
+        default: dev
+        type: choice
+        options:
+        - dev
+        - qa
+        - prod
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+env:
+  AWS_REGION: us-east-1
+  WORKING_DIR: infras/envs/us-east-1
+  PYTHON_VERSION: '3.9'
+jobs:
+  monitor-agent-core:
+    name: Monitor Agent Core
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    - name: Install dependencies
+      run: 'python -m pip install --upgrade pip
 
-      - name: Update Langfuse Credentials
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
-          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
-          LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
-          ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
-        run: |
-          if [[ -n "$LANGFUSE_PUBLIC_KEY" && -n "$LANGFUSE_SECRET_KEY" ]]; then
-            # Update SSM parameters
-            aws ssm put-parameter \
-              --name "/cloudable/${ENVIRONMENT}/langfuse/public-key" \
-              --value "${LANGFUSE_PUBLIC_KEY}" \
-              --type "String" \
-              --overwrite
-              
-            aws ssm put-parameter \
-              --name "/cloudable/${ENVIRONMENT}/langfuse/secret-key" \
-              --value "${LANGFUSE_SECRET_KEY}" \
-              --type "SecureString" \
-              --overwrite
-              
-            aws ssm put-parameter \
-              --name "/cloudable/${ENVIRONMENT}/langfuse/host" \
-              --value "${LANGFUSE_HOST}" \
-              --type "String" \
-              --overwrite
-              
-            echo "Langfuse credentials updated successfully."
-          else
-            echo "Langfuse credentials not provided or incomplete. Skipping update."
-          fi
+        pip install boto3 requests matplotlib pandas
+
+        '
+    - name: Check Agent Status
+      run: "cat > check_agent_status.py << 'EOF'\nimport boto3\nimport json\nimport\
+        \ sys\nimport os\nimport time\nfrom datetime import datetime, timedelta\n\n\
+        region = os.environ.get(\"AWS_REGION\", \"us-east-1\")\nenv = os.environ.get(\"\
+        ENVIRONMENT\", \"dev\")\n\nbedrock_agent = boto3.client('bedrock-agent', region_name=region)\n\
+        cloudwatch = boto3.client('cloudwatch', region_name=region)\nssm = boto3.client('ssm',\
+        \ region_name=region)\n\ndef check_agent_status():\n    # Get agent ID from\
+        \ SSM parameter\n    try:\n        param_name = f\"/cloudable/{env}/agent/t001/alias_arn\"\
+        \n        response = ssm.get_parameter(Name=param_name)\n        alias_arn\
+        \ = response['Parameter']['Value']\n        \n        # Parse agent_id from\
+        \ ARN\n        resource = alias_arn.split(\":\", 5)[5]\n        _, agent_id,\
+        \ _ = resource.split(\"/\")\n        \n        # Check agent status\n    \
+        \    response = bedrock_agent.get_agent(agentId=agent_id)\n        status\
+        \ = response['agent']['agentStatus']\n        \n        print(f\"Agent ID:\
+        \ {agent_id}\")\n        print(f\"Status: {status}\")\n        \n        return\
+        \ status == \"PREPARED\"\n    except Exception as e:\n        print(f\"Error\
+        \ checking agent status: {str(e)}\")\n        return False\n\ndef check_agent_metrics():\n\
+        \    end_time = datetime.utcnow()\n    start_time = end_time - timedelta(hours=6)\n\
+        \    \n    metrics = [\n        {\n            \"name\": \"AgentInvocationCount\"\
+        ,\n            \"threshold\": 0,\n            \"comparison\": \"GreaterThanThreshold\"\
+        \n        },\n        {\n            \"name\": \"AgentSuccessfulInvocationCount\"\
+        ,\n            \"threshold\": 0,\n            \"comparison\": \"GreaterThanThreshold\"\
+        \n        }\n    ]\n    \n    results = {}\n    \n    for metric in metrics:\n\
+        \        response = cloudwatch.get_metric_statistics(\n            Namespace=\"\
+        AWS/Bedrock\",\n            MetricName=metric[\"name\"],\n            StartTime=start_time,\n\
+        \            EndTime=end_time,\n            Period=3600,\n            Statistics=[\"\
+        Sum\"]\n        )\n        \n        datapoints = response.get(\"Datapoints\"\
+        , [])\n        value = sum([dp[\"Sum\"] for dp in datapoints]) if datapoints\
+        \ else 0\n        \n        print(f\"{metric['name']}: {value}\")\n      \
+        \  \n        # Check if metric meets threshold\n        meets_threshold =\
+        \ False\n        if metric[\"comparison\"] == \"GreaterThanThreshold\":\n\
+        \            meets_threshold = value > metric[\"threshold\"]\n        elif\
+        \ metric[\"comparison\"] == \"LessThanThreshold\":\n            meets_threshold\
+        \ = value < metric[\"threshold\"]\n        \n        results[metric[\"name\"\
+        ]] = {\n            \"value\": value,\n            \"meets_threshold\": meets_threshold\n\
+        \        }\n    \n    return all(result[\"meets_threshold\"] for result in\
+        \ results.values())\n\nif __name__ == \"__main__\":\n    agent_status_ok =\
+        \ check_agent_status()\n    metrics_ok = check_agent_metrics()\n    \n   \
+        \ if agent_status_ok and metrics_ok:\n        print(\"Agent Core status: HEALTHY\"\
+        )\n        sys.exit(0)\n    else:\n        print(\"Agent Core status: UNHEALTHY\"\
+        )\n        sys.exit(1)\nEOF\n\nexport ENVIRONMENT=\"${{ github.event.inputs.environment\
+        \ || 'dev' }}\"\npython check_agent_status.py\n"
+    - name: Check Telemetry Status
+      if: success() || failure()
+      run: "cat > check_telemetry.py << 'EOF'\nimport boto3\nimport json\nimport sys\n\
+        import os\nfrom datetime import datetime, timedelta\n\nregion = os.environ.get(\"\
+        AWS_REGION\", \"us-east-1\")\nenv = os.environ.get(\"ENVIRONMENT\", \"dev\"\
+        )\n\nlogs = boto3.client('logs', region_name=region)\n\ndef check_log_groups():\n\
+        \    telemetry_log_group = f\"/aws/bedrock/agent-core-telemetry-{env}\"\n\
+        \    tracing_log_group = f\"/aws/bedrock/agent-core-tracing-{env}\"\n    \n\
+        \    log_groups = [telemetry_log_group, tracing_log_group]\n    results =\
+        \ {}\n    \n    for log_group in log_groups:\n        try:\n            response\
+        \ = logs.describe_log_streams(\n                logGroupName=log_group,\n\
+        \                orderBy=\"LastEventTime\",\n                descending=True,\n\
+        \                limit=5\n            )\n            \n            log_streams\
+        \ = response.get(\"logStreams\", [])\n            if not log_streams:\n  \
+        \              print(f\"No log streams found in {log_group}\")\n         \
+        \       results[log_group] = False\n                continue\n           \
+        \ \n            latest_stream = log_streams[0]\n            latest_event_time\
+        \ = latest_stream.get(\"lastEventTimestamp\", 0)\n            \n         \
+        \   # Convert timestamp to datetime\n            latest_time = datetime.fromtimestamp(latest_event_time\
+        \ / 1000)\n            current_time = datetime.now()\n            \n     \
+        \       # Check if logs are recent (within last 24 hours)\n            time_diff\
+        \ = current_time - latest_time\n            has_recent_logs = time_diff.total_seconds()\
+        \ < 86400  # 24 hours\n            \n            print(f\"{log_group}: Latest\
+        \ event at {latest_time}\")\n            print(f\"Has recent logs: {has_recent_logs}\"\
+        )\n            \n            results[log_group] = has_recent_logs\n      \
+        \  \n        except Exception as e:\n            print(f\"Error checking log\
+        \ group {log_group}: {str(e)}\")\n            results[log_group] = False\n\
+        \    \n    return all(results.values())\n\nif __name__ == \"__main__\":\n\
+        \    telemetry_ok = check_log_groups()\n    \n    if telemetry_ok:\n     \
+        \   print(\"Telemetry status: HEALTHY\")\n        sys.exit(0)\n    else:\n\
+        \        print(\"Telemetry status: UNHEALTHY\")\n        sys.exit(1)\nEOF\n\
+        \nexport ENVIRONMENT=\"${{ github.event.inputs.environment || 'dev' }}\"\n\
+        python check_telemetry.py\n"
+    - name: Generate Monitoring Report
+      if: always()
+      run: "cat > monitoring_report.md << EOF\n# Agent Core Monitoring Report\n\n\
+        **Environment:** ${{ github.event.inputs.environment || 'dev' }}\n**Date:**\
+        \ $(date -u +\"%Y-%m-%d %H:%M:%S UTC\")\n\n## Status Summary\n\n| Component\
+        \ | Status |\n|-----------|--------|\n| Agent Core | ${{ job.steps[3].conclusion\
+        \ == 'success' && '\u2705 HEALTHY' || '\u274C UNHEALTHY' }} |\n| Telemetry\
+        \ | ${{ job.steps[4].conclusion == 'success' && '\u2705 HEALTHY' || '\u274C\
+        \ UNHEALTHY' }} |\n\n## Next Steps\n\n${{ (job.steps[3].conclusion == 'success'\
+        \ && job.steps[4].conclusion == 'success') && '\u2705 All systems are operational.\
+        \ No action required.' || '\u274C Issues detected. Please check the logs for\
+        \ more information.' }}\n\nEOF\n\ncat monitoring_report.md\n"
+    - name: Upload Monitoring Report
+      uses: actions/upload-artifact@v3
+      with:
+        name: monitoring-report
+        path: monitoring_report.md
+        retention-days: 7
+  update-langfuse-credentials:
+    name: Update Langfuse Credentials
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Update Langfuse Credentials
+      if: github.event_name == 'workflow_dispatch'
+      env:
+        LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+        LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+        LANGFUSE_HOST: ${{ secrets.LANGFUSE_HOST || 'https://cloud.langfuse.com' }}
+        ENVIRONMENT: ${{ github.event.inputs.environment || 'dev' }}
+      run: "if [[ -n \"$LANGFUSE_PUBLIC_KEY\" && -n \"$LANGFUSE_SECRET_KEY\" ]]; then\n\
+        \  # Update SSM parameters\n  aws ssm put-parameter \\\n    --name \"/cloudable/${ENVIRONMENT}/langfuse/public-key\"\
+        \ \\\n    --value \"${LANGFUSE_PUBLIC_KEY}\" \\\n    --type \"String\" \\\n\
+        \    --overwrite\n    \n  aws ssm put-parameter \\\n    --name \"/cloudable/${ENVIRONMENT}/langfuse/secret-key\"\
+        \ \\\n    --value \"${LANGFUSE_SECRET_KEY}\" \\\n    --type \"SecureString\"\
+        \ \\\n    --overwrite\n    \n  aws ssm put-parameter \\\n    --name \"/cloudable/${ENVIRONMENT}/langfuse/host\"\
+        \ \\\n    --value \"${LANGFUSE_HOST}\" \\\n    --type \"String\" \\\n    --overwrite\n\
+        \    \n  echo \"Langfuse credentials updated successfully.\"\nelse\n  echo\
+        \ \"Langfuse credentials not provided or incomplete. Skipping update.\"\n\
+        fi"
+'on':
+  workflow_dispatch: {}
