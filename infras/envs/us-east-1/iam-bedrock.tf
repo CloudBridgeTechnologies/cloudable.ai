@@ -82,20 +82,29 @@ resource "aws_iam_role_policy" "kb" {
       {
         Effect = "Allow",
         Action = [
-          "aoss:APIAccessAll",
-          "aoss:CreateIndex",
-          "aoss:DeleteIndex",
-          "aoss:UpdateIndex",
-          "aoss:DescribeIndex",
-          "aoss:ReadDocument",
-          "aoss:WriteDocument",
-          "aoss:BatchGetDocument",
-          "aoss:Search"
+          "rds:DescribeDBClusters",
+          "rds-data:ExecuteStatement",
+          "rds-data:BatchExecuteStatement",
+          "rds-data:BeginTransaction",
+          "rds-data:CommitTransaction",
+          "rds-data:RollbackTransaction"
         ],
-        Resource = [
-          aws_opensearchserverless_collection.kb[each.key].arn,
-          "${aws_opensearchserverless_collection.kb[each.key].arn}/*"
-        ]
+        Resource = aws_rds_cluster.this.arn
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ],
+        Resource = aws_secretsmanager_secret.db.arn
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "kms:Decrypt",
+          "kms:DescribeKey"
+        ],
+        Resource = aws_kms_key.rds.arn
       },
       {
         Effect = "Allow",
@@ -110,42 +119,42 @@ resource "aws_iam_role_policy" "kb" {
   })
 }
 
-# Create policy for KB Manager access to OpenSearch
-resource "aws_iam_policy" "kb_manager_opensearch" {
-  name        = "kb-manager-opensearch-${var.env}-${var.region}"
-  description = "IAM policy for KB Manager to access OpenSearch Serverless"
-  
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Action = [
-          "aoss:APIAccessAll"
-        ],
-        Resource = [
-          for tenant_key, tenant in var.tenants :
-          aws_opensearchserverless_collection.kb[tenant_key].arn
-        ]
-      },
-      {
-        Effect = "Allow",
-        Action = [
-          "aoss:CreateIndex",
-          "aoss:DeleteIndex",
-          "aoss:UpdateIndex",
-          "aoss:DescribeIndex",
-          "aoss:ReadDocument",
-          "aoss:WriteDocument",
-          "aoss:BatchGetDocument",
-          "aoss:Search"
-        ],
-        Resource = [
-          for tenant_key, tenant in var.tenants :
-          "${aws_opensearchserverless_collection.kb[tenant_key].arn}/*"
-        ]
-      }
-    ]
-  })
-}
+# OpenSearch policy DISABLED - Using RDS with pgvector instead
+# resource "aws_iam_policy" "kb_manager_opensearch" {
+#   name        = "kb-manager-opensearch-${var.env}-${var.region}"
+#   description = "IAM policy for KB Manager to access OpenSearch Serverless"
+#   
+#   policy = jsonencode({
+#     Version = "2012-10-17",
+#     Statement = [
+#       {
+#         Effect = "Allow",
+#         Action = [
+#           "aoss:APIAccessAll"
+#         ],
+#         Resource = [
+#           for tenant_key, tenant in var.tenants :
+#           aws_opensearchserverless_collection.kb[tenant_key].arn
+#         ]
+#       },
+#       {
+#         Effect = "Allow",
+#         Action = [
+#           "aoss:CreateIndex",
+#           "aoss:DeleteIndex",
+#           "aoss:UpdateIndex",
+#           "aoss:DescribeIndex",
+#           "aoss:ReadDocument",
+#           "aoss:WriteDocument",
+#           "aoss:BatchGetDocument",
+#           "aoss:Search"
+#         ],
+#         Resource = [
+#           for tenant_key, tenant in var.tenants :
+#           "${aws_opensearchserverless_collection.kb[tenant_key].arn}/*"
+#         ]
+#       }
+#     ]
+#   })
+# }
 

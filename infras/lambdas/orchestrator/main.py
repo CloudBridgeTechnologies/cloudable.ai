@@ -67,11 +67,12 @@ def handler(event, context):
         })
 
 def handle_kb_query(body):
-    """Handle knowledge base query with detailed logging"""
+    """Handle knowledge base query with RDS backend"""
     logger.info("HANDLING KB QUERY")
     
     # Extract required parameters
     tenant_id = body.get("tenant_id")
+    customer_id = body.get("customer_id", "anonymous")
     query = body.get("query")
     
     # Validate parameters
@@ -80,17 +81,45 @@ def handle_kb_query(body):
         return _resp(400, {"error": "tenant_id and query are required parameters"})
     
     # Log parameters
-    logger.info(f"KB query parameters: tenant_id={tenant_id}, query={query}")
+    logger.info(f"KB query parameters: tenant_id={tenant_id}, customer_id={customer_id}, query={query}")
     
-    # For now, just echo back the request with a stub response
-    # This is to verify the basic request/response flow works
-    response = {
-        "answer": f"This is a test response for query: '{query}' from tenant: '{tenant_id}'",
-        "sources_count": 0,
-        "confidence_scores": []
-    }
-    
-    return _resp(200, response)
+    try:
+        # Call KB manager Lambda
+        lambda_client = boto3.client('lambda')
+        logger.info(f"Invoking KB manager Lambda: {os.environ.get('KB_MANAGER_FUNCTION_NAME', 'kb-manager-dev')}")
+        
+        payload = {
+            "path": "/kb/query",
+            "httpMethod": "POST",
+            "body": json.dumps({
+                "tenant_id": tenant_id,
+                "customer_id": customer_id,
+                "query": query
+            })
+        }
+        
+        response = lambda_client.invoke(
+            FunctionName=os.environ.get("KB_MANAGER_FUNCTION_NAME", "kb-manager-dev"),
+            InvocationType="RequestResponse",
+            Payload=json.dumps(payload)
+        )
+        
+        logger.info(f"KB manager Lambda invocation completed, processing response")
+        result = json.loads(response['Payload'].read())
+        logger.info(f"KB manager response: {json.dumps(result, default=str)}")
+        
+        if result.get('statusCode', 500) != 200:
+            logger.error(f"KB manager returned error: {result}")
+            return _resp(result.get('statusCode', 500), json.loads(result.get('body', '{}')))
+        
+        response_body = json.loads(result.get('body', '{}'))
+        
+        # Return the KB query result
+        return _resp(200, response_body)
+        
+    except Exception as e:
+        logger.error(f"KB query failed: {str(e)}", exc_info=True)
+        return _resp(500, {"error": "Failed to process knowledge base query"})
 
 def handle_chat(body):
     """Handle chat requests with detailed logging"""

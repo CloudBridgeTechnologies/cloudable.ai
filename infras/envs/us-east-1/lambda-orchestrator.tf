@@ -68,6 +68,13 @@ resource "aws_iam_role_policy" "orchestrator" {
           "kms:Decrypt"
         ],
         Resource = aws_kms_key.s3.arn
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "lambda:InvokeFunction"
+        ],
+        Resource = aws_lambda_function.kb_manager.arn
       }
     ]
   })
@@ -85,6 +92,7 @@ resource "aws_lambda_function" "orchestrator" {
     variables = {
       REGION = var.region
       ENV    = var.env
+      KB_MANAGER_FUNCTION_NAME = aws_lambda_function.kb_manager.function_name
     }
   }
   tags = local.tags
@@ -94,13 +102,13 @@ resource "aws_lambda_function" "orchestrator" {
 # Using lifecycle = { ignore_changes = [name] } to prevent conflicts with auto-created log groups
 # This resource should be imported using: terraform import aws_cloudwatch_log_group.orchestrator "/aws/lambda/orchestrator-dev"
 resource "aws_cloudwatch_log_group" "orchestrator" {
-  name              = "/aws/lambda/${aws_lambda_function.orchestrator.function_name}"
+  name              = "/aws/lambda/${aws_lambda_function.orchestrator.function_name}-v2"
   retention_in_days = 30
   tags              = local.tags
   
   lifecycle {
-    # Ignore name changes to prevent conflicts with auto-created log groups
-    ignore_changes  = [name]
+    # Naming with v2 suffix to prevent conflicts with auto-created log groups
+    # ignore_changes  = [name]
     # Allow deletion in Terraform destroy operations
     prevent_destroy = false
   }
