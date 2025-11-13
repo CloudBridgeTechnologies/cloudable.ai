@@ -1,37 +1,32 @@
 name: Update Lambda Functions
-
-on:
+true:
   push:
     branches:
-      - main
+    - main
     paths:
-      - 'infras/lambdas/**'
+    - infras/lambdas/**
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Environment to update'
+        description: Environment to update
         required: true
-        default: 'dev'
+        default: dev
         type: choice
         options:
-          - dev
-          - qa
-          - prod
+        - dev
+        - qa
+        - prod
       function:
-        description: 'Specific function to update (leave empty for all)'
+        description: Specific function to update (leave empty for all)
         required: false
         type: string
-
-
 permissions:
-  id-token: write  # Required for AWS credentials
-  contents: read   # Required for checkout
-  pull-requests: write  # Required for PR comments
-
+  id-token: write
+  contents: read
+  pull-requests: write
 env:
   AWS_REGION: us-east-1
   PYTHON_VERSION: '3.9'
-
 jobs:
   update-lambda-functions:
     name: Update Lambda Functions
@@ -39,133 +34,202 @@ jobs:
     strategy:
       matrix:
         function:
-          - { name: "orchestrator", path: "orchestrator" }
-          - { name: "kb-manager", path: "kb_manager" }
-          - { name: "document-summarizer", path: "document_summarizer" }
-          - { name: "s3-helper", path: "s3_helper" }
-          - { name: "db-actions", path: "db_actions" }
-          - { name: "summary-retriever", path: "summary_retriever" }
+        - name: orchestrator
+          path: orchestrator
+        - name: kb-manager
+          path: kb_manager
+        - name: document-summarizer
+          path: document_summarizer
+        - name: s3-helper
+          path: s3_helper
+        - name: db-actions
+          path: db_actions
+        - name: summary-retriever
+          path: summary_retriever
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Check if function should be updated
-        id: check_function
-        run: |
-          SPECIFIC_FUNCTION="${{ github.event.inputs.function }}"
-          CURRENT_FUNCTION="${{ matrix.function.name }}"
-          
-          if [ -z "$SPECIFIC_FUNCTION" ] || [ "$SPECIFIC_FUNCTION" == "$CURRENT_FUNCTION" ]; then
-            echo "should_update=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_update=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Install dependencies
-        if: steps.check_function.outputs.should_update == 'true'
-        run: |
-          python -m pip install --upgrade pip
-          
-          # Check if requirements.txt exists for this function
-          if [ -f "infras/lambdas/${{ matrix.function.path }}/requirements.txt" ]; then
-            pip install -r "infras/lambdas/${{ matrix.function.path }}/requirements.txt"
-          fi
-
-      - name: Create Lambda package
-        if: steps.check_function.outputs.should_update == 'true'
-        run: |
-          # Create package directory
-          mkdir -p lambda_package
-          
-          # Copy function code
-          cp -r infras/lambdas/${{ matrix.function.path }}/* lambda_package/
-          
-          # Copy shared modules if needed
-          if [ -f "infras/lambdas/telemetry_helper.py" ]; then
-            cp infras/lambdas/telemetry_helper.py lambda_package/
-          fi
-          
-          if [ -f "infras/lambdas/langfuse_client.py" ]; then
-            cp infras/lambdas/langfuse_client.py lambda_package/
-          fi
-          
-          # Create ZIP package
-          cd lambda_package
-          zip -r ../${{ matrix.function.name }}.zip .
-          cd ..
-          
-          # Check ZIP file size
-          ZIP_SIZE=$(du -h ${{ matrix.function.name }}.zip | cut -f1)
-          echo "Lambda package size: $ZIP_SIZE"
-
-      - name: Update Lambda function
-        if: steps.check_function.outputs.should_update == 'true'
-        run: |
-          FUNCTION_NAME="${{ matrix.function.name }}-${{ github.event.inputs.environment || 'dev' }}"
-          
-          # Update function code
-          aws lambda update-function-code \
-            --function-name $FUNCTION_NAME \
-            --zip-file fileb://${{ matrix.function.name }}.zip \
-            --region ${{ env.AWS_REGION }}
-            
-          echo "Updated Lambda function: $FUNCTION_NAME"
-          
-          # Wait for function update to complete
-          aws lambda wait function-updated \
-            --function-name $FUNCTION_NAME \
-            --region ${{ env.AWS_REGION }}
-
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    - name: Check if function should be updated
+      id: check_function
+      run: "SPECIFIC_FUNCTION=\"${{ github.event.inputs.function }}\"\nCURRENT_FUNCTION=\"\
+        ${{ matrix.function.name }}\"\n\nif [ -z \"$SPECIFIC_FUNCTION\" ] || [ \"\
+        $SPECIFIC_FUNCTION\" == \"$CURRENT_FUNCTION\" ]; then\n  echo \"should_update=true\"\
+        \ >> $GITHUB_OUTPUT\nelse\n  echo \"should_update=false\" >> $GITHUB_OUTPUT\n\
+        fi\n"
+    - name: Install dependencies
+      if: steps.check_function.outputs.should_update == 'true'
+      run: "python -m pip install --upgrade pip\n\n# Check if requirements.txt exists\
+        \ for this function\nif [ -f \"infras/lambdas/${{ matrix.function.path }}/requirements.txt\"\
+        \ ]; then\n  pip install -r \"infras/lambdas/${{ matrix.function.path }}/requirements.txt\"\
+        \nfi\n"
+    - name: Create Lambda package
+      if: steps.check_function.outputs.should_update == 'true'
+      run: "# Create package directory\nmkdir -p lambda_package\n\n# Copy function\
+        \ code\ncp -r infras/lambdas/${{ matrix.function.path }}/* lambda_package/\n\
+        \n# Copy shared modules if needed\nif [ -f \"infras/lambdas/telemetry_helper.py\"\
+        \ ]; then\n  cp infras/lambdas/telemetry_helper.py lambda_package/\nfi\n\n\
+        if [ -f \"infras/lambdas/langfuse_client.py\" ]; then\n  cp infras/lambdas/langfuse_client.py\
+        \ lambda_package/\nfi\n\n# Create ZIP package\ncd lambda_package\nzip -r ../${{\
+        \ matrix.function.name }}.zip .\ncd ..\n\n# Check ZIP file size\nZIP_SIZE=$(du\
+        \ -h ${{ matrix.function.name }}.zip | cut -f1)\necho \"Lambda package size:\
+        \ $ZIP_SIZE\"\n"
+    - name: Update Lambda function
+      if: steps.check_function.outputs.should_update == 'true'
+      run: "FUNCTION_NAME=\"${{ matrix.function.name }}-${{ github.event.inputs.environment\
+        \ || 'dev' }}\"\n\n# Update function code\naws lambda update-function-code\
+        \ \\\n  --function-name $FUNCTION_NAME \\\n  --zip-file fileb://${{ matrix.function.name\
+        \ }}.zip \\\n  --region ${{ env.AWS_REGION }}\n  \necho \"Updated Lambda function:\
+        \ $FUNCTION_NAME\"\n\n# Wait for function update to complete\naws lambda wait\
+        \ function-updated \\\n  --function-name $FUNCTION_NAME \\\n  --region ${{\
+        \ env.AWS_REGION }}\n"
   test-lambda-functions:
     name: Test Lambda Functions
     needs: update-lambda-functions
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Invoke Orchestrator Lambda
+      run: "FUNCTION_NAME=\"orchestrator-${{ github.event.inputs.environment || 'dev'\
+        \ }}\"\n\n# Create test event\ncat > test_event.json << EOF\n{\n  \"body\"\
+        : \"{\\\"tenant_id\\\":\\\"t001\\\",\\\"customer_id\\\":\\\"test_user\\\"\
+        ,\\\"message\\\":\\\"What is my journey status?\\\"}\"\n}\nEOF\n\n# Invoke\
+        \ Lambda function\naws lambda invoke \\\n  --function-name $FUNCTION_NAME\
+        \ \\\n  --payload file://test_event.json \\\n  --region ${{ env.AWS_REGION\
+        \ }} \\\n  response.json\n  \n# Check response\ncat response.json\n\n# Validate\
+        \ response format\nif grep -q \"answer\" response.json; then\n  echo \"Orchestrator\
+        \ Lambda test: SUCCESS\"\nelse\n  echo \"Orchestrator Lambda test: FAILURE\"\
+        \n  exit 1\nfi"
+'on':
+  workflow_dispatch: {}
 
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Invoke Orchestrator Lambda
-        run: |
-          FUNCTION_NAME="orchestrator-${{ github.event.inputs.environment || 'dev' }}"
-          
-          # Create test event
-          cat > test_event.json << EOF
-          {
-            "body": "{\"tenant_id\":\"t001\",\"customer_id\":\"test_user\",\"message\":\"What is my journey status?\"}"
-          }
-          EOF
-          
-          # Invoke Lambda function
-          aws lambda invoke \
-            --function-name $FUNCTION_NAME \
-            --payload file://test_event.json \
-            --region ${{ env.AWS_REGION }} \
-            response.json
-            
-          # Check response
-          cat response.json
-          
-          # Validate response format
-          if grep -q "answer" response.json; then
-            echo "Orchestrator Lambda test: SUCCESS"
-          else
-            echo "Orchestrator Lambda test: FAILURE"
-            exit 1
-          fi
+  push:
+    branches:
+    - main
+    paths:
+    - infras/lambdas/**
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to update
+        required: true
+        default: dev
+        type: choice
+        options:
+        - dev
+        - qa
+        - prod
+      function:
+        description: Specific function to update (leave empty for all)
+        required: false
+        type: string
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+env:
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: '3.9'
+jobs:
+  update-lambda-functions:
+    name: Update Lambda Functions
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        function:
+        - name: orchestrator
+          path: orchestrator
+        - name: kb-manager
+          path: kb_manager
+        - name: document-summarizer
+          path: document_summarizer
+        - name: s3-helper
+          path: s3_helper
+        - name: db-actions
+          path: db_actions
+        - name: summary-retriever
+          path: summary_retriever
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    - name: Check if function should be updated
+      id: check_function
+      run: "SPECIFIC_FUNCTION=\"${{ github.event.inputs.function }}\"\nCURRENT_FUNCTION=\"\
+        ${{ matrix.function.name }}\"\n\nif [ -z \"$SPECIFIC_FUNCTION\" ] || [ \"\
+        $SPECIFIC_FUNCTION\" == \"$CURRENT_FUNCTION\" ]; then\n  echo \"should_update=true\"\
+        \ >> $GITHUB_OUTPUT\nelse\n  echo \"should_update=false\" >> $GITHUB_OUTPUT\n\
+        fi\n"
+    - name: Install dependencies
+      if: steps.check_function.outputs.should_update == 'true'
+      run: "python -m pip install --upgrade pip\n\n# Check if requirements.txt exists\
+        \ for this function\nif [ -f \"infras/lambdas/${{ matrix.function.path }}/requirements.txt\"\
+        \ ]; then\n  pip install -r \"infras/lambdas/${{ matrix.function.path }}/requirements.txt\"\
+        \nfi\n"
+    - name: Create Lambda package
+      if: steps.check_function.outputs.should_update == 'true'
+      run: "# Create package directory\nmkdir -p lambda_package\n\n# Copy function\
+        \ code\ncp -r infras/lambdas/${{ matrix.function.path }}/* lambda_package/\n\
+        \n# Copy shared modules if needed\nif [ -f \"infras/lambdas/telemetry_helper.py\"\
+        \ ]; then\n  cp infras/lambdas/telemetry_helper.py lambda_package/\nfi\n\n\
+        if [ -f \"infras/lambdas/langfuse_client.py\" ]; then\n  cp infras/lambdas/langfuse_client.py\
+        \ lambda_package/\nfi\n\n# Create ZIP package\ncd lambda_package\nzip -r ../${{\
+        \ matrix.function.name }}.zip .\ncd ..\n\n# Check ZIP file size\nZIP_SIZE=$(du\
+        \ -h ${{ matrix.function.name }}.zip | cut -f1)\necho \"Lambda package size:\
+        \ $ZIP_SIZE\"\n"
+    - name: Update Lambda function
+      if: steps.check_function.outputs.should_update == 'true'
+      run: "FUNCTION_NAME=\"${{ matrix.function.name }}-${{ github.event.inputs.environment\
+        \ || 'dev' }}\"\n\n# Update function code\naws lambda update-function-code\
+        \ \\\n  --function-name $FUNCTION_NAME \\\n  --zip-file fileb://${{ matrix.function.name\
+        \ }}.zip \\\n  --region ${{ env.AWS_REGION }}\n  \necho \"Updated Lambda function:\
+        \ $FUNCTION_NAME\"\n\n# Wait for function update to complete\naws lambda wait\
+        \ function-updated \\\n  --function-name $FUNCTION_NAME \\\n  --region ${{\
+        \ env.AWS_REGION }}\n"
+  test-lambda-functions:
+    name: Test Lambda Functions
+    needs: update-lambda-functions
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: ${{ env.AWS_REGION }}
+    - name: Invoke Orchestrator Lambda
+      run: "FUNCTION_NAME=\"orchestrator-${{ github.event.inputs.environment || 'dev'\
+        \ }}\"\n\n# Create test event\ncat > test_event.json << EOF\n{\n  \"body\"\
+        : \"{\\\"tenant_id\\\":\\\"t001\\\",\\\"customer_id\\\":\\\"test_user\\\"\
+        ,\\\"message\\\":\\\"What is my journey status?\\\"}\"\n}\nEOF\n\n# Invoke\
+        \ Lambda function\naws lambda invoke \\\n  --function-name $FUNCTION_NAME\
+        \ \\\n  --payload file://test_event.json \\\n  --region ${{ env.AWS_REGION\
+        \ }} \\\n  response.json\n  \n# Check response\ncat response.json\n\n# Validate\
+        \ response format\nif grep -q \"answer\" response.json; then\n  echo \"Orchestrator\
+        \ Lambda test: SUCCESS\"\nelse\n  echo \"Orchestrator Lambda test: FAILURE\"\
+        \n  exit 1\nfi"
+'on':
+  workflow_dispatch: {}

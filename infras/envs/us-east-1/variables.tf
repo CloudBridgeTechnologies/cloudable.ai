@@ -1,43 +1,50 @@
-variable "region" { type = string }
-variable "env" { type = string }
-variable "alert_emails" {
-  description = "Email addresses for CloudWatch alarms"
-  type        = list(string)
-  default     = ["admin@cloudable.ai"]
+# Core variables
+variable "region" {
+  description = "AWS region for infrastructure deployment"
+  type        = string
+  default     = "us-east-1"
 }
 
-variable "tenants" {
-  description = "Map of tenants: { t001 = { name = \"acme\" }, ... }"
-  type        = map(object({ name = string }))
+variable "env" {
+  description = "Environment name (dev, test, prod)"
+  type        = string
+  default     = "dev"
+}
+
+variable "domain_name" {
+  description = "Domain name for CORS configuration"
+  type        = string
+  default     = "cloudable.ai"
 }
 
 variable "aurora_engine_version" {
   description = "Aurora PostgreSQL engine version"
   type        = string
-  default     = "15.12" # match current deployed engine to avoid downgrade
+  default     = "15.12" # Keeping current version to avoid downgrade
 }
 
-# Bedrock models (allow override)
-variable "embedding_model_arn" {
-  type    = string
-  default = "arn:aws:bedrock:eu-west-2::foundation-model/amazon.titan-embed-text-v2:0"
+variable "tenants" {
+  description = "Map of tenant configurations"
+  type = map(object({
+    name = string
+  }))
+  default = {
+    t001 = { name = "acme" }
+    t002 = { name = "globex" }
+  }
 }
 
-variable "agent_model_arn" {
-  type    = string
-  default = "arn:aws:bedrock:us-east-1:951296734820:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0"
+# API security and networking
+variable "api_throttling_rate_limit" {
+  description = "API Gateway throttling rate limit (requests per second)"
+  type        = number
+  default     = 10
 }
 
 variable "api_throttling_burst_limit" {
   description = "API Gateway throttling burst limit"
   type        = number
   default     = 20
-}
-
-variable "api_throttling_rate_limit" {
-  description = "API Gateway throttling rate limit"
-  type        = number
-  default     = 100
 }
 
 variable "lambda_subnet_ids" {
@@ -60,13 +67,37 @@ variable "enable_xray" {
   default     = true
 }
 
-variable "common_tags" {
-  type    = map(string)
-  default = {}
+variable "alert_emails" {
+  description = "Email addresses for CloudWatch alarms"
+  type        = list(string)
+  default     = []
 }
 
+# Bedrock variables
+# embedding_model_arn is now defined in bedrock-knowledge-base.tf
+
+variable "agent_model_arn" {
+  description = "ARN for the Bedrock agent model"
+  type        = string
+  default     = "arn:aws:bedrock:us-east-1:975049969923:inference-profile/us.anthropic.claude-sonnet-4-20250514-v1:0"
+}
+
+# Document processing variables
+variable "enable_document_summarization" {
+  description = "Enable document summarization functionality"
+  type        = bool
+  default     = true
+}
+
+variable "max_document_size_mb" {
+  description = "Maximum allowed document size in MB"
+  type        = number
+  default     = 50
+}
+
+# Feature flags
 variable "enable_bedrock_agents" {
-  description = "Toggle Bedrock guardrails, knowledge bases, agents, associations, and action groups"
+  description = "Enable Bedrock agents functionality"
   type        = bool
   default     = true
 }
@@ -75,6 +106,19 @@ variable "enable_advanced_security" {
   description = "Enable advanced security features"
   type        = bool
   default     = true
+}
+
+# S3 feature toggles
+variable "enable_bucket_logging" {
+  description = "Enable detailed S3 access logging"
+  type        = bool
+  default     = false
+}
+
+variable "enable_intelligent_tiering" {
+  description = "Enable S3 intelligent tiering rules"
+  type        = bool
+  default     = false
 }
 
 # Remote state variables
@@ -88,10 +132,4 @@ variable "remote_state_key" {
   description = "S3 key for Terraform remote state"
   type        = string
   default     = "terraform.tfstate"
-}
-
-variable "domain_name" {
-  description = "Domain name for CORS configuration"
-  type        = string
-  default     = "cloudable.ai"
 }

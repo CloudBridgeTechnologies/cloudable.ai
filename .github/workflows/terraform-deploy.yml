@@ -91,10 +91,13 @@ jobs:
         run: terraform init
         working-directory: ${{ env.WORKING_DIR }}
 
+      - name: Set Environment Name
+        run: echo "ENV_NAME=${{ github.event.inputs.environment || 'dev' }}" >> $GITHUB_ENV
+        
       - name: Create Terraform Variables
         run: |
           cat > terraform.tfvars << EOF
-          env = "${{ github.event.inputs.environment || 'dev' }}"
+          env = "${{ env.ENV_NAME }}"
           region = "${{ env.AWS_REGION }}"
           tenants = {
             t001 = { name = "acme" }
@@ -177,10 +180,13 @@ jobs:
           name: terraform-plan
           path: ${{ env.WORKING_DIR }}
 
+      - name: Set Environment Name
+        run: echo "ENV_NAME=${{ github.event.inputs.environment || 'dev' }}" >> $GITHUB_ENV
+        
       - name: Create Terraform Variables
         run: |
           cat > terraform.tfvars << EOF
-          env = "${{ github.event.inputs.environment || 'dev' }}"
+          env = "${{ env.ENV_NAME }}"
           region = "${{ env.AWS_REGION }}"
           tenants = {
             t001 = { name = "acme" }

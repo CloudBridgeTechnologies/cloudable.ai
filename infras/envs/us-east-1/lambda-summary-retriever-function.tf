@@ -86,3 +86,4 @@ resource "aws_lambda_permission" "allow_api_summary_retriever" {
   # The source_arn has the format: arn:aws:execute-api:region:account-id:api-id/stage/method/resource-path
   source_arn    = "${aws_api_gateway_rest_api.secure_api.execution_arn}/*/*/*"
 }
+

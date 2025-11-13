@@ -34,13 +34,8 @@ EOF
   foundation_model        = "anthropic.claude-3-sonnet-20240229-v1:0"
   agent_resource_role_arn = aws_iam_role.agent.arn
 
-  # Enhanced inference configuration for better reasoning
-  inference_configuration {
-    temperature = 0.3  # Lower for more consistent reasoning
-    top_p       = 0.9
-    top_k       = 50
-    max_length  = 4096
-  }
+  # Note: Inference configuration not supported in current provider version
+  # Will be configured via AWS console or API
 
   # guardrail_configuration {
   #   guardrail_identifier = aws_bedrock_guardrail.tenant[each.key].guardrail_id

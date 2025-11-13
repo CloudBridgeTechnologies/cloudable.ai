@@ -5,6 +5,12 @@ data "archive_file" "kb_manager_zip" {
   output_path = "${path.module}/kb_manager.zip"
 }
 
+data "archive_file" "kb_sync_trigger_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../lambdas/kb_sync_trigger"
+  output_path = "${path.module}/kb_sync_trigger.zip"
+}
+
 resource "aws_iam_role" "kb_manager" {
   name               = "kb-manager-${var.env}-${var.region}"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
@@ -170,7 +176,7 @@ resource "aws_lambda_function" "kb_sync_trigger" {
   function_name    = "kb-sync-trigger-${var.env}"
   role             = aws_iam_role.kb_sync_trigger.arn
   filename         = "${path.module}/kb_sync_trigger.zip"
-  source_code_hash = filebase64sha256("${path.module}/kb_sync_trigger.zip")
+  source_code_hash = data.archive_file.kb_sync_trigger_zip.output_base64sha256
   handler          = "main.handler"
   runtime          = "python3.12"
   timeout          = 900  # 15 minutes

@@ -25,13 +25,13 @@ resource "aws_iam_role_policy" "db_actions" {
 }
 
 resource "aws_lambda_function" "db_actions" {
-  function_name = "db-actions-${var.env}"
-  role          = aws_iam_role.db_actions.arn
-  filename      = data.archive_file.db_actions_zip.output_path
+  function_name    = "db-actions-${var.env}"
+  role             = aws_iam_role.db_actions.arn
+  filename         = data.archive_file.db_actions_zip.output_path
   source_code_hash = data.archive_file.db_actions_zip.output_base64sha256
-  handler       = "main.handler"
-  runtime       = "python3.12"
-  timeout       = 900  # Increased to 15 minutes
+  handler          = "main.handler"
+  runtime          = "python3.12"
+  timeout          = 900 # Increased to 15 minutes
   environment {
     variables = {
       DB_CLUSTER_ARN = aws_rds_cluster.this.arn

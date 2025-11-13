@@ -139,3 +139,11 @@ You can customize the deployment by editing:
 - [AWS CLI Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-profiles.html)
 - [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
 - [Bedrock Documentation](https://docs.aws.amazon.com/bedrock)
+
+
+
+
+
+
+
+

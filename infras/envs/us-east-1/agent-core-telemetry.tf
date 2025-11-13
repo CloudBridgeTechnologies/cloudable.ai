@@ -195,7 +195,7 @@ resource "aws_cloudwatch_metric_alarm" "kb_query_latency" {
   metric_name         = "KnowledgeBaseQueryLatency"
   namespace           = "AWS/Bedrock"
   period              = 300
-  statistic           = "p90"
+  extended_statistic  = "p90"
   threshold           = 2000 # 2 seconds
   alarm_description   = "This alarm monitors for high latency in Knowledge Base queries"
   

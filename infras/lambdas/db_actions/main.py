@@ -1,13 +1,43 @@
 import json, os, boto3
 import logging
+import sys
+import time
+import traceback
+from datetime import datetime
+
+# Add parent directory to path for importing telemetry_helper
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    from telemetry_helper import telemetry_wrapper, AgentTelemetry
+except ImportError:
+    # If telemetry_helper is not available, create stub functions
+    def telemetry_wrapper(operation_type):
+        def decorator(func):
+            return func
+        return decorator
+        
+    class AgentTelemetry:
+        @staticmethod
+        def log_operation(*args, **kwargs):
+            pass
+        
+        @staticmethod
+        def log_trace(*args, **kwargs):
+            pass
+            
+        @staticmethod
+        def put_metric(*args, **kwargs):
+            pass
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+# Initialize AWS clients
 rds = boto3.client("rds-data")
 CLUSTER_ARN = os.environ["DB_CLUSTER_ARN"]
 SECRET_ARN  = os.environ["DB_SECRET_ARN"]
 DB_NAME     = os.environ["DB_NAME"]
+TELEMETRY_ENABLED = os.environ.get("TELEMETRY_ENABLED", "true").lower() == "true"
 
 def q(sql, params):
     logger.info(f"Executing SQL: {sql} with params: {params}")
