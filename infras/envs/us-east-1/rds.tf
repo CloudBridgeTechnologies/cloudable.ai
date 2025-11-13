@@ -74,6 +74,9 @@ resource "aws_rds_cluster" "this" {
     min_capacity = 0.5
     max_capacity = 1.0
   }
+  
+  # Enable Data API v2 for Bedrock Knowledge Base
+  enable_http_endpoint = true
 
   tags = local.tags
   

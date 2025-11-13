@@ -60,16 +60,16 @@ resource "aws_cloudwatch_log_group" "http_api_logs" {
   })
 }
 
-# CloudWatch Log Group for OpenSearch Serverless collections
-resource "aws_cloudwatch_log_group" "opensearch_logs" {
-  for_each          = var.enable_bedrock_agents ? var.tenants : {}
-  name              = "/aws/opensearchserverless/collection/${aws_opensearchserverless_collection.kb[each.key].name}"
-  retention_in_days = 30
-  tags = merge(local.tags, {
-    Service = "OpenSearch",
-    Tenant  = each.value.name
-  })
-}
+# CloudWatch Log Group for OpenSearch Serverless collections - DISABLED (using RDS instead)
+# resource "aws_cloudwatch_log_group" "opensearch_logs" {
+#   for_each          = var.enable_bedrock_agents ? var.tenants : {}
+#   name              = "/aws/opensearchserverless/collection/${aws_opensearchserverless_collection.kb[each.key].name}"
+#   retention_in_days = 30
+#   tags = merge(local.tags, {
+#     Service = "OpenSearch",
+#     Tenant  = each.value.name
+#   })
+# }
 
 # CloudWatch Alarms for Lambda errors
 resource "aws_cloudwatch_metric_alarm" "lambda_errors" {

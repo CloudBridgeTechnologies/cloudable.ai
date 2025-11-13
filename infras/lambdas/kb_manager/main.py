@@ -16,6 +16,7 @@ logger.setLevel(logging.INFO)
 s3_client = boto3.client('s3', region_name=os.environ.get('REGION', 'us-east-1'), config=boto3.session.Config(signature_version='s3v4'))
 bedrock_client = boto3.client('bedrock-agent', region_name=os.environ.get('REGION', 'us-east-1'))
 bedrock_runtime = boto3.client('bedrock-agent-runtime', region_name=os.environ.get('REGION', 'us-east-1'))
+rds_client = boto3.client('rds-data', region_name=os.environ.get('REGION', 'us-east-1'))
 
 def validate_input(tenant_id: str, customer_id: str = None) -> dict:
     """Validate tenant and customer IDs"""
@@ -176,7 +177,7 @@ def trigger_knowledge_sync(tenant_id: str, document_key: str) -> dict:
         return {"error": f"Failed to sync knowledge base: {str(e)}", "statusCode": 500}
 
 def query_knowledge_base(tenant_id: str, customer_id: str, query: str) -> dict:
-    """Query the knowledge base for information"""
+    """Query the knowledge base using RDS with pgvector"""
     try:
         # Validate inputs
         validation = validate_input(tenant_id, customer_id)
@@ -191,33 +192,112 @@ def query_knowledge_base(tenant_id: str, customer_id: str, query: str) -> dict:
         
         sanitized_query = html.escape(query.strip())
         
-        # Get knowledge base ID
-        kb_id = os.environ.get(f'KB_ID_{tenant_id.upper()}')
+        # Generate embeddings using Bedrock Titan
+        embedding_result = generate_embedding(sanitized_query)
+        if "error" in embedding_result:
+            return {"error": embedding_result["error"], "statusCode": 500}
+            
+        # Get RDS connection parameters
+        cluster_arn = os.environ.get('RDS_CLUSTER_ARN')
+        secret_arn = os.environ.get('RDS_SECRET_ARN')
+        db_name = os.environ.get('RDS_DATABASE', 'cloudable')
+        table_name = f"kb_vectors_{tenant_id}"
         
-        if not kb_id:
-            return {"answer": "I don't know. No knowledge base is configured for your organization."}
+        # Log the parameters for debugging
+        logger.info(f"RDS Query Parameters: cluster_arn={cluster_arn}, db_name={db_name}, table={table_name}")
         
-        # Query the knowledge base
-        response = bedrock_runtime.retrieve(
-            knowledgeBaseId=kb_id,
-            retrievalQuery={
-                'text': sanitized_query
-            },
-            retrievalConfiguration={
-                'vectorSearchConfiguration': {
-                    'numberOfResults': 5,
-                    'overrideSearchType': 'HYBRID'
-                }
-            }
-        )
+        # SQL for vector similarity search with pgvector
+        sql_query = f"""
+        SELECT chunk_text, metadata, 1 - (embedding <=> :embedding) AS score
+        FROM {table_name}
+        ORDER BY embedding <=> :embedding
+        LIMIT 5;
+        """
+        
+        # Execute SQL using Data API
+        try:
+            # Log key RDS connection info, ensuring secrets are not leaked
+            logger.info(f"RDS Query: Connecting to database {db_name}, table {table_name}")
+            logger.info(f"Using cluster ARN ending with: ...{cluster_arn[-8:]}")
+            logger.info(f"Using secret ARN ending with: ...{secret_arn[-8:]}")
+            logger.info(f"Query will search for {len(embedding_result['embedding'])} dimensional vectors")
+            
+            # Create a metric for query start time
+            start_time = datetime.now()
+            
+            # Execute the query
+            response = rds_client.execute_statement(
+                resourceArn=cluster_arn,
+                secretArn=secret_arn,
+                database=db_name,
+                sql=sql_query,
+                parameters=[
+                    {'name': 'embedding', 'value': {'arrayValue': {'floatValues': embedding_result["embedding"]}}}
+                ]
+            )
+            
+            # Calculate query duration
+            duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            record_count = len(response.get('records', []))
+            
+            # Log success with performance metrics
+            logger.info(f"RDS Query executed successfully in {duration_ms:.2f}ms, returned {record_count} records")
+            
+            # Publish custom CloudWatch metrics for monitoring
+            try:
+                cloudwatch_client = boto3.client('cloudwatch')
+                cloudwatch_client.put_metric_data(
+                    Namespace='CloudableAI/KB',
+                    MetricData=[
+                        {
+                            'MetricName': 'QueryDuration',
+                            'Dimensions': [
+                                {'Name': 'TenantId', 'Value': tenant_id},
+                                {'Name': 'Environment', 'Value': os.environ.get('ENV', 'dev')}
+                            ],
+                            'Value': duration_ms,
+                            'Unit': 'Milliseconds'
+                        },
+                        {
+                            'MetricName': 'QueryResultCount',
+                            'Dimensions': [
+                                {'Name': 'TenantId', 'Value': tenant_id},
+                                {'Name': 'Environment', 'Value': os.environ.get('ENV', 'dev')}
+                            ],
+                            'Value': record_count,
+                            'Unit': 'Count'
+                        }
+                    ]
+                )
+            except Exception as e:
+                # Don't fail the query if metrics publishing fails
+                logger.warning(f"Failed to publish CloudWatch metrics: {str(e)}")
+        except Exception as e:
+            logger.error(f"RDS Query error: {str(e)}")
+            return {"error": f"Database query error: {str(e)}", "statusCode": 500}
         
         # Process results
-        results = response.get('retrievalResults', [])
-        
+        results = []
+        for record in response.get('records', []):
+            chunk_text = record[0]['stringValue']
+            metadata_str = record[1]['stringValue']
+            score = float(record[2]['doubleValue'])
+            
+            try:
+                metadata = json.loads(metadata_str) if metadata_str else {}
+            except json.JSONDecodeError:
+                metadata = {}
+                
+            results.append({
+                'content': {'text': chunk_text},
+                'metadata': metadata,
+                'score': score
+            })
+            
         if not results:
             return {"answer": "I don't know. I couldn't find any relevant information in the knowledge base."}
-        
-        # Extract relevant content (lower threshold to improve recall)
+            
+        # Extract relevant content
         relevant_content = []
         for result in results:
             content = result.get('content', {}).get('text', '')
@@ -278,6 +358,20 @@ Please provide a helpful and accurate answer based only on the provided context.
     except Exception as e:
         logger.error(f"Error querying knowledge base: {str(e)}")
         return {"error": f"Failed to query knowledge base: {str(e)}", "statusCode": 500}
+
+def generate_embedding(text: str) -> dict:
+    """Generate embeddings using Bedrock Titan Embeddings model"""
+    try:
+        response = bedrock_runtime.invoke_model(
+            modelId="amazon.titan-embed-text-v1",
+            body=json.dumps({"inputText": text})
+        )
+        embedding_response = json.loads(response["body"].read())
+        embedding = embedding_response.get("embedding")
+        return {"embedding": embedding}
+    except Exception as e:
+        logger.error(f"Error generating embedding: {str(e)}")
+        return {"error": f"Failed to generate embedding: {str(e)}"}
 
 def get_ingestion_status(tenant_id: str, ingestion_job_id: str) -> dict:
     """Get knowledge base ingestion job status"""

@@ -98,12 +98,27 @@ resource "aws_iam_role_policy" "kb_manager" {
       {
         Effect = "Allow",
         Action = [
-          "aoss:APIAccessAll"
+          "rds-data:ExecuteStatement",
+          "rds-data:BatchExecuteStatement",
+          "rds-data:BeginTransaction",
+          "rds-data:CommitTransaction",
+          "rds-data:RollbackTransaction"
         ],
-        Resource = [
-          for tenant_key, tenant in var.tenants :
-          aws_opensearchserverless_collection.kb[tenant_key].arn
-        ]
+        Resource = aws_rds_cluster.this.arn
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "secretsmanager:GetSecretValue"
+        ],
+        Resource = aws_secretsmanager_secret.db.arn
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "cloudwatch:PutMetricData"
+        ],
+        Resource = "*"
       }
     ]
   })
@@ -141,6 +156,11 @@ resource "aws_lambda_function" "kb_manager" {
       
       # Encryption Configuration
       S3_KMS_KEY_ARN = aws_kms_key.s3.arn
+      
+      # RDS Configuration for pgvector
+      RDS_CLUSTER_ARN = aws_rds_cluster.this.arn
+      RDS_SECRET_ARN = aws_secretsmanager_secret.db.arn
+      RDS_DATABASE = "cloudable"
     }
   }
   
