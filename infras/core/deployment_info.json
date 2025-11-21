@@ -1,0 +1,5 @@
+{
+  "rds_cluster_arn": "arn:aws:rds:us-east-1:951296734820:cluster:aurora-dev-core-v2",
+  "rds_cluster_endpoint": "aurora-dev-core-v2.cluster-c6hgymmugz0s.us-east-1.rds.amazonaws.com",
+  "api_endpoint": "https://chuejjwsr0.execute-api.us-east-1.amazonaws.com/dev"
+}

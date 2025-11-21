@@ -1,0 +1,6 @@
+{
+  "tenant_id": "acme",
+  "customer_id": "test-customer",
+  "message": "What are the key features of Cloudable.AI?",
+  "conversation_id": "test-chat-1"
+}

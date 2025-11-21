@@ -1,0 +1,6 @@
+{
+  "tenant": "acme",
+  "message": "Hello",
+  "conversation_id": "test-1",
+  "use_kb": true
+}

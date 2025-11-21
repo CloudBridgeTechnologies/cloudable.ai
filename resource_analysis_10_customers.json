@@ -1,0 +1,54 @@
+{
+  "infrastructure": {
+    "vpc_subnets": 4,
+    "nat_gateway": 1,
+    "security_groups": 2,
+    "monthly_cost": 48.65
+  },
+  "database": {
+    "aurora_cluster": {
+      "cluster": 1,
+      "instances": 1,
+      "engine": "aurora-postgresql",
+      "version": "15.12",
+      "min_acu": 0.5,
+      "max_acu": 1.0,
+      "storage_encrypted": true,
+      "backup_retention": 7,
+      "data_api_enabled": true
+    },
+    "estimated_storage_gb": 100,
+    "monthly_cost": 74.80000000000001
+  },
+  "compute": {
+    "lambda_function": {
+      "function_name": "kb-manager-dev-core",
+      "runtime": "python3.9",
+      "memory_mb": 256,
+      "timeout_seconds": 30,
+      "concurrent_executions": 10
+    },
+    "estimated_monthly_invocations": 10000,
+    "api_gateway_requests": 10000,
+    "monthly_cost": 0.0953335
+  },
+  "storage": {
+    "s3_total_gb": 50,
+    "monthly_requests": 6000,
+    "monthly_cost": 1.1569999999999998
+  },
+  "monitoring": {
+    "cloudwatch_logs_gb": 1.0,
+    "secrets_manager_secrets": 1,
+    "monthly_cost": 0.9
+  },
+  "bedrock_ai": {
+    "estimated_tokens_monthly": 100000,
+    "monthly_cost": 0.08
+  },
+  "totals": {
+    "total_monthly_cost": 125.68,
+    "cost_per_customer": 12.57,
+    "customers": 10
+  }
+}

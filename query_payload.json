@@ -1,0 +1,5 @@
+{
+  "tenant": "acme",
+  "query": "What are the key features of Cloudable.AI?",
+  "max_results": 3
+}

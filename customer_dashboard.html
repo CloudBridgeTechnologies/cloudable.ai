@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cloudable.AI Customer Journey Dashboard</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f8f9fa;
+      color: #333;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    header {
+      background-color: #0066cc;
+      color: white;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .card {
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+      padding: 20px;
+    }
+    .tabs {
+      display: flex;
+      margin-bottom: 20px;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      background-color: #e9ecef;
+      border: none;
+      border-radius: 4px 4px 0 0;
+      margin-right: 5px;
+    }
+    .tab.active {
+      background-color: white;
+      border-bottom: 3px solid #0066cc;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    input, textarea, button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #0066cc;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .results {
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+      min-height: 100px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .status-box {
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+    }
+    .status-box.implementation {
+      background-color: #ffe082;
+      border-left: 4px solid #ffa000;
+    }
+    .status-box.onboarding {
+      background-color: #c8e6c9;
+      border-left: 4px solid #4caf50;
+    }
+    .flex-container {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .flex-container > div {
+      flex: 1 1 400px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Cloudable.AI Customer Journey Dashboard</h1>
+  </header>
+  
+  <div class="container">
+    <div class="tabs">
+      <button class="tab active" data-tenant="acme">ACME Corporation</button>
+      <button class="tab" data-tenant="globex">Globex Industries</button>
+    </div>
+    
+    <!-- ACME Tab -->
+    <div id="acme-tab" class="tab-content active">
+      <div class="flex-container">
+        <div>
+          <div class="card">
+            <h2>ACME Corporation</h2>
+            <div class="status-box implementation">
+              <strong>Status: Implementation (Phase 3/5)</strong><br>
+              Expected completion: December 10, 2025
+            </div>
+            <h3>Company Profile</h3>
+            <p>Medium-sized manufacturing company with 500 employees, specializing in industrial equipment. Currently implementing digital transformation to optimize supply chain and customer service operations.</p>
+          </div>
+        </div>
+        
+        <div>
+          <div class="card">
+            <h3>Success Metrics</h3>
+            <ul>
+              <li>30% reduction in order processing time (Current: 18%)</li>
+              <li>25% improvement in inventory accuracy (Current: 20%)</li>
+              <li>15% increase in customer satisfaction (Current: 8%)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h3>Query Knowledge Base</h3>
+        <input type="text" id="acme-query" placeholder="Ask a question about ACME's customer journey..." value="What are the next steps for ACME Corporation?">
+        <button id="acme-search-btn">Search</button>
+        <div class="results" id="acme-results"></div>
+      </div>
+      
+      <div class="card">
+        <h3>Chat with AI Assistant</h3>
+        <textarea id="acme-chat" placeholder="Ask about ACME's implementation status...">Give me a summary of ACME's implementation progress and key challenges.</textarea>
+        <button id="acme-chat-btn">Send</button>
+        <div class="results" id="acme-chat-results"></div>
+      </div>
+    </div>
+    
+    <!-- Globex Tab -->
+    <div id="globex-tab" class="tab-content">
+      <div class="flex-container">
+        <div>
+          <div class="card">
+            <h2>Globex Industries</h2>
+            <div class="status-box onboarding">
+              <strong>Status: Onboarding (Phase 1/4)</strong><br>
+              Expected completion: June 15, 2026
+            </div>
+            <h3>Company Profile</h3>
+            <p>Large financial services provider with 2,000+ employees across multiple regions. Implementing comprehensive digital transformation focused on customer experience and operational efficiency.</p>
+          </div>
+        </div>
+        
+        <div>
+          <div class="card">
+            <h3>Key Stakeholders</h3>
+            <ul>
+              <li>Thomas Wong - CTO (Primary technical contact)</li>
+              <li>Aisha Patel - Chief Digital Officer (Executive sponsor)</li>
+              <li>Robert Martinez - Head of Customer Experience</li>
+              <li>Jennifer Lee - Compliance Director</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h3>Query Knowledge Base</h3>
+        <input type="text" id="globex-query" placeholder="Ask a question about Globex's customer journey..." value="What are the implementation risks for Globex Industries?">
+        <button id="globex-search-btn">Search</button>
+        <div class="results" id="globex-results"></div>
+      </div>
+      
+      <div class="card">
+        <h3>Chat with AI Assistant</h3>
+        <textarea id="globex-chat" placeholder="Ask about Globex's implementation status...">What is the current status of Globex Industries' implementation?</textarea>
+        <button id="globex-chat-btn">Send</button>
+        <div class="results" id="globex-chat-results"></div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    // API endpoint
+    const API_ENDPOINT = "https://xn66ohjpw1.execute-api.us-east-1.amazonaws.com/dev";
+    
+    // Tab switching
+    const tabs = document.querySelectorAll('.tab');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    tabs.forEach(tab => {
+      tab.addEventListener('click', function() {
+        // Remove active class from all tabs and tab contents
+        tabs.forEach(t => t.classList.remove('active'));
+        tabContents.forEach(tc => tc.classList.remove('active'));
+        
+        // Add active class to clicked tab and corresponding content
+        this.classList.add('active');
+        const tenant = this.dataset.tenant;
+        document.getElementById(`${tenant}-tab`).classList.add('active');
+      });
+    });
+    
+    // ACME search
+    document.getElementById('acme-search-btn').addEventListener('click', async function() {
+      const query = document.getElementById('acme-query').value;
+      const resultsDiv = document.getElementById('acme-results');
+      
+      resultsDiv.innerHTML = "Searching...";
+      
+      try {
+        const response = await fetch(`${API_ENDPOINT}/api/kb/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenant: 'acme',
+            query: query,
+            max_results: 3
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.results && data.results.length > 0) {
+          let html = '';
+          data.results.forEach(result => {
+            html += `<div class="status-box">
+              <p>${result.text}</p>
+              <small>Source: ${result.metadata?.source || 'Unknown'} | KB ID: ${result.metadata?.kb_id || 'Unknown'} | Relevance: ${Math.round(result.score * 100)}%</small>
+            </div>`;
+          });
+          resultsDiv.innerHTML = html;
+        } else {
+          resultsDiv.innerHTML = "No results found.";
+        }
+      } catch (error) {
+        resultsDiv.innerHTML = `Error: ${error.message}`;
+      }
+    });
+    
+    // ACME chat
+    document.getElementById('acme-chat-btn').addEventListener('click', async function() {
+      const message = document.getElementById('acme-chat').value;
+      const resultsDiv = document.getElementById('acme-chat-results');
+      
+      resultsDiv.innerHTML = "Processing...";
+      
+      try {
+        const response = await fetch(`${API_ENDPOINT}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenant: 'acme',
+            message: message,
+            use_kb: true
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.response) {
+          let html = `<div class="status-box">
+            <p>${data.response}</p>`;
+            
+          if (data.source_documents && data.source_documents.length > 0) {
+            html += `<p><small>Sources:</small></p><ul>`;
+            data.source_documents.forEach(doc => {
+              html += `<li><small>${doc.metadata?.source || 'Unknown'} (KB ID: ${doc.metadata?.kb_id || 'Unknown'})</small></li>`;
+            });
+            html += `</ul>`;
+          }
+          
+          html += `</div>`;
+          resultsDiv.innerHTML = html;
+        } else {
+          resultsDiv.innerHTML = "No response received.";
+        }
+      } catch (error) {
+        resultsDiv.innerHTML = `Error: ${error.message}`;
+      }
+    });
+    
+    // Globex search
+    document.getElementById('globex-search-btn').addEventListener('click', async function() {
+      const query = document.getElementById('globex-query').value;
+      const resultsDiv = document.getElementById('globex-results');
+      
+      resultsDiv.innerHTML = "Searching...";
+      
+      try {
+        const response = await fetch(`${API_ENDPOINT}/api/kb/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenant: 'globex',
+            query: query,
+            max_results: 3
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.results && data.results.length > 0) {
+          let html = '';
+          data.results.forEach(result => {
+            html += `<div class="status-box">
+              <p>${result.text}</p>
+              <small>Source: ${result.metadata?.source || 'Unknown'} | KB ID: ${result.metadata?.kb_id || 'Unknown'} | Relevance: ${Math.round(result.score * 100)}%</small>
+            </div>`;
+          });
+          resultsDiv.innerHTML = html;
+        } else {
+          resultsDiv.innerHTML = "No results found.";
+        }
+      } catch (error) {
+        resultsDiv.innerHTML = `Error: ${error.message}`;
+      }
+    });
+    
+    // Globex chat
+    document.getElementById('globex-chat-btn').addEventListener('click', async function() {
+      const message = document.getElementById('globex-chat').value;
+      const resultsDiv = document.getElementById('globex-chat-results');
+      
+      resultsDiv.innerHTML = "Processing...";
+      
+      try {
+        const response = await fetch(`${API_ENDPOINT}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tenant: 'globex',
+            message: message,
+            use_kb: true
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.response) {
+          let html = `<div class="status-box">
+            <p>${data.response}</p>`;
+            
+          if (data.source_documents && data.source_documents.length > 0) {
+            html += `<p><small>Sources:</small></p><ul>`;
+            data.source_documents.forEach(doc => {
+              html += `<li><small>${doc.metadata?.source || 'Unknown'} (KB ID: ${doc.metadata?.kb_id || 'Unknown'})</small></li>`;
+            });
+            html += `</ul>`;
+          }
+          
+          html += `</div>`;
+          resultsDiv.innerHTML = html;
+        } else {
+          resultsDiv.innerHTML = "No response received.";
+        }
+      } catch (error) {
+        resultsDiv.innerHTML = `Error: ${error.message}`;
+      }
+    });
+    
+    // Run initial searches
+    window.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('acme-search-btn').click();
+      document.getElementById('globex-search-btn').click();
+    });
+  </script>
+</body>
+</html>
